@@ -33,10 +33,10 @@ dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 
 ## 使用
 
-1. **添加市场**：输入任意 git 仓库地址（ssh / https 均可），仓库需含市场清单 `marketplace.json`
+1. **添加市场**：输入任意 git 仓库地址（ssh / https 均可），可选指定**分支 / 标签 / commit id**（默认使用仓库默认分支）；仓库需含市场清单 `marketplace.json`
    （查找顺序：`.agents/plugins/marketplace.json` → `.claude-plugin/marketplace.json` → `.cursor-plugin/marketplace.json` → 仓库根 `marketplace.json`）
 2. **安装插件**：市场清单中每个插件一行（`source` 为仓库内路径，或 `{"source": "local", "path": "./"}` 指向仓库根），点击「安装」即原地注册其技能
-3. **更新市场**：对已添加的市场执行 `git pull --ff-only`，技能目录自动重新扫描
+3. **自动更新**：**DSH 每次启动时自动对全部市场执行 `git pull --ff-only`**（失败不影响启动，仅记录日志）；分支/默认分支市场随更新，**tag/commit 固定引用不自动更新**（「更新」按钮会提示无需更新）
 4. **技能开关**：已安装插件下列出全部技能，默认全开；关闭后技能不再出现在 DSH 技能目录
 
 ## 市场仓库格式（Codex 兼容）
