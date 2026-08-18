@@ -1,0 +1,13 @@
+# dsh-agent-plugin-market bundle patch: inserts the dual-face plugin row into
+# the web profile roster. Applied as a profile bundle layer (the
+# `dsh.bundle.patch` manifest field) over dsh-base; install with
+# `dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market`.
+#
+# The row is a bare plugin by package name: the node half (exports ".") runs
+# in the host process (git markets, skill provider, RPC routes), and the
+# `dsh.client` declaration in package.json makes the browser half (exports
+# "./client", served at /plugins/dsh-agent-plugin-market/client.js) load in
+# the web GUI settings page.
+- insert:
+    - id: dsh-agent-plugin-market
+      name: 'dsh-agent-plugin-market'

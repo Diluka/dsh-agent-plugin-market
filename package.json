@@ -1,0 +1,39 @@
+{
+  "name": "dsh-agent-plugin-market",
+  "version": "0.1.0",
+  "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场（兼容 Codex / Claude 技能格式），克隆后原地加载插件技能到 DSH 技能系统，支持添加/更新市场、安装/更新插件、按技能启用禁用，并提供设置页配置 UI。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Diluka/dsh-agent-plugin-market"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "market",
+    "skills",
+    "codex"
+  ]
+}
