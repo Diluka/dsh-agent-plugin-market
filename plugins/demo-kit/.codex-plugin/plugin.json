@@ -1,0 +1,12 @@
+{
+  "name": "demo-kit",
+  "version": "0.1.0",
+  "description": "DSH 插件市场演示插件：一组示例技能",
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Demo Kit",
+    "shortDescription": "示例技能包",
+    "developerName": "Diluka",
+    "category": "examples"
+  }
+}
