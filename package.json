@@ -1,9 +1,24 @@
 {
   "name": "dsh-agent-plugin-market",
   "version": "0.1.0",
-  "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场（兼容 Codex / Claude 技能格式），克隆后原地加载插件技能到 DSH 技能系统，支持添加/更新市场、安装/更新插件、按技能启用禁用，并提供设置页配置 UI。",
+  "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场，加载 Codex / Claude 技能，并以显式授权注册受支持的 Codex hooks。",
   "type": "module",
   "main": "lib/index.js",
+  "dependencies": {
+    "@deepseek-ai/dsh-hook-protocol": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-hooks-codex": "0.1.0-rc.7"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-client-ui-primitives": "*",
+    "@deepseek-ai/dsh-invariants": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-session-persistence": "*",
+    "@deepseek-ai/dsh-shell": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
