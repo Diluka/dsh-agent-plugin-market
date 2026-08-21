@@ -5,22 +5,10 @@
   "type": "module",
   "main": "lib/index.js",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-hook-protocol": "*",
-    "@deepseek-ai/dsh-hooks-codex": "*",
-    "@deepseek-ai/dsh-agent": "*",
     "@deepseek-ai/dsh-client-ui-primitives": "*",
-    "@deepseek-ai/dsh-invariants": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-session": "*",
-    "@deepseek-ai/dsh-session-persistence": "*",
-    "@deepseek-ai/dsh-shell": "*",
-    "@deepseek-ai/dsh-tools": "*"
+    "@deepseek-ai/dsh-hooks-codex": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-hook-protocol": {
-      "optional": true
-    },
     "@deepseek-ai/dsh-hooks-codex": {
       "optional": true
     }
@@ -35,7 +23,9 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": [],
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ],
       "platform": "web"
     }
   },

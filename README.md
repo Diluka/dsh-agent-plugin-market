@@ -14,14 +14,14 @@ DSH（DeepSeek Harness）插件市场：将 **git 仓库**作为 agent 内容插
 dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 ```
 
-安装完成后**重启 DeepSeek Harness**，设置 → 插件市场 即可使用。DSH 运行时包通过 peer dependencies 由当前 DSH profile 提供；市场与技能功能不依赖 Codex hooks bridge，bridge 缺失时设置页会提示安装命令并禁用 hooks 开关。
+安装完成后**重启 DeepSeek Harness**，设置 → 插件市场 即可使用。DSH 运行时包通过 peer dependencies 由当前 DSH profile 提供；市场与技能功能不依赖 Codex hooks bridge，bridge 缺失时设置页会提示安装命令并禁用 hooks 开关。市场管理仅允许通过本机 loopback 地址访问，以保护本机 Git 操作和 hooks 执行。
 
 ### 启用 Codex hooks（可选）
 
 只有需要执行已明确授权的 Codex hooks 时，才在同一 profile 中安装 bridge 与协议包，然后重启 DSH：
 
 ```bash
-dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex@0.1.0-rc.7 @deepseek-ai/dsh-hook-protocol@0.1.0-rc.7
+dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex @deepseek-ai/dsh-hook-protocol
 ```
 
 手动等效步骤：
@@ -103,6 +103,6 @@ dsh plugin --profile web rm dsh-agent-plugin-market
 
 | 半端 | 文件 | 职责 |
 | --- | --- | --- |
-| Host | `lib/index.js` | git 市场克隆/更新、清单解析、SKILL.md 扫描、Codex hooks 发现/授权/bridge Fiber 生命周期、`ctx.skills` provider 注册、RPC 路由（`POST /agent-plugin-market/api/<name>`） |
+| Host | `lib/index.js` | git 市场克隆/更新、清单解析、SKILL.md 扫描、Codex hooks 发现/授权/bridge Fiber 生命周期、`ctx.skills` provider 注册、loopback Connection RPC channel |
 | Host helper | `lib/codex-hooks.js` | Codex hook source 解析、配置指纹和插件环境包装 |
-| Client | `lib/client.js` | 设置页「插件市场」UI（`settings.section` slot），fetch 调用 Host RPC |
+| Client | `lib/client.js` | 设置页「插件市场」UI（`settings.section` slot），通过 `ctx.connection.rpc` 调用 Host RPC |
