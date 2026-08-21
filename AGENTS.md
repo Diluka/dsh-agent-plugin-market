@@ -31,7 +31,9 @@ repository is not a standalone web application.
   plugin root, receive only the documented plugin environment variables, and
   are disposed when disabled, changed, updated, or removed.
 - Treat market content and hook configuration as untrusted input. Keep path
-  containment checks and do not weaken update-triggered approval revocation.
+  containment checks. On a market update, only hooks actively mounted before
+  the pull may be re-enabled against the new configuration; all other hook
+  approvals remain revoked.
 - Use `@deepseek-ai/dsh-client-ui-primitives` before making a new UI control.
   The page currently uses `Button`, `Input`, `Pill`, and `Menu`. Use
   `--dsw-*` theme tokens for any layout or missing-control adapter; never add
@@ -69,10 +71,11 @@ use curl as UI evidence.
 Check the settings entry, market controls, disabled/enabled switch contrast,
 and both light and dark themes after visual changes.
 
-For hooks, use a disposable fixture and trigger a real DSH tool call. Verify
-that the enabled hook receives the event, that disabling stops it, and that a
-market update or configuration change revokes approval. Remove fixtures and
-marker data after validation.
+For hooks, create disposable local Git market fixtures under `test-repos/`
+and trigger a real DSH tool call. Verify that the enabled hook receives the
+event, disabling stops it, and a market update attempts to reactivate a hook
+that was active before the pull. Remove the registered market and marker data
+after validation.
 
 ## Required Skill Routing
 
