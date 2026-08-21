@@ -46,7 +46,7 @@ dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 2. **安装插件**：市场清单中每个插件一行（`source` 为仓库内路径，或 `{"source": "local", "path": "./"}` 指向仓库根）。当 `{"source": "url", "url": "..."}` 指向当前市场仓库时，也会按仓库根插件处理；这兼容同时将自身作为市场与插件发布的仓库。点击「安装」即原地注册其技能
 3. **自动更新**：**DSH 每次启动时自动对全部市场执行 `git pull --ff-only`**（失败不影响启动，仅记录日志）；分支/默认分支市场随更新，**tag/commit 固定引用不自动更新**（「更新」按钮会提示无需更新）
 4. **技能开关**：已安装插件下列出全部技能，默认全开；关闭后技能不再出现在 DSH 技能目录
-5. **Codex hooks 授权**：安装的 Codex 插件检测到 hooks 配置后默认关闭。bridge 缺失时 hooks 配置仍可见，但开关保持禁用；安装 bridge 并重启后，开关需要再次点击确认。可更新市场拉取到任何新提交时，市场会自动停止该市场的 hooks，等待新的显式确认。
+5. **Codex hooks 授权**：安装的 Codex 插件检测到 hooks 配置后默认关闭。bridge 缺失时 hooks 配置仍可见，但开关保持禁用；安装 bridge 并重启后，开关需要再次点击确认。可更新市场拉取到任何新提交时，更新前正在运行的 hooks 会按新配置尝试重新激活；未在运行的 hooks 仍需显式确认。
 
 ## 市场仓库格式（Codex 兼容）
 
@@ -83,7 +83,7 @@ Codex 插件可在 manifest 中声明一份或多份 hooks 配置，也可省略
 }
 ```
 
-市场只接受插件根目录内的 hooks 路径，并在注册前为每个 command hook 注入插件根目录与持久数据目录的环境变量。它复用 DSH 的 Codex bridge，当前映射 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop` 五个点；同步 `command` hooks 才会执行。每个市场插件的 hooks 都需要显式授权，配置变更后需要再次授权。
+市场只接受插件根目录内的 hooks 路径，并在注册前为每个 command hook 注入插件根目录与持久数据目录的环境变量。它复用 DSH 的 Codex bridge，当前映射 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop` 五个点；同步 `command` hooks 才会执行。每个市场插件的 hooks 都需要显式授权；市场更新会按新配置尝试重新激活更新前已激活的 hooks，其他配置变更需要再次授权。
 
 ## 配置存储
 
