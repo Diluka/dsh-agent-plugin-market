@@ -19,7 +19,7 @@ repository is not a standalone web application.
   TypeScript, `import`, or bundler-only features.
 - `cordis.patch.yml`: Adds the package to the web profile composition.
 - `package.json`: DSH runtime packages are peer dependencies. The Codex hook
-  bridge and protocol are direct dependencies.
+  bridge and protocol are optional peers so markets and skills work without them.
 
 ## Development Rules
 
@@ -40,10 +40,15 @@ repository is not a standalone web application.
 - Keep the settings section ID stable as `skills-and-hooks` unless the DSH
   settings integration is intentionally migrated. The visible label is
   `技能与 Hooks`.
-- Do not start a replacement Vite server for the existing DSH GUI. Host and
-  package changes need the active DSH process restarted. Client changes need a
-  page refresh; claim HMR only after verifying the DSH checkout's
+- Use exclusive local debugging: link the Web profile to this repository root
+  and develop here. Do not use a separate Git worktree for debugging; switching
+  branches in the root checkout is allowed when needed.
+- Do not start a replacement Vite server for the existing DSH GUI. Client
+  changes need a page refresh; claim HMR only after verifying the DSH checkout's
   `pnpm run dev:web` watcher is running.
+- Do not restart DSH autonomously. Host and package changes need a restart, so
+  ask the user to restart and confirm the current state, or end the turn asking
+  them to message again after restarting.
 
 ## Validation
 
@@ -57,9 +62,10 @@ node --check lib/client.js
 git diff --check
 ```
 
-For UI, install or link the current checkout into the target DSH web profile,
-restart the active DSH process when required, then test the existing GUI at
-`http://127.0.0.1:3080` with `agent-browser`. Do not use curl as UI evidence.
+For UI, link this repository root into the target DSH web profile. For Host or
+package changes, ask the user to restart DSH and confirm it has restarted, then
+test the existing GUI at `http://127.0.0.1:3080` with `agent-browser`. Do not
+use curl as UI evidence.
 Check the settings entry, market controls, disabled/enabled switch contrast,
 and both light and dark themes after visual changes.
 
