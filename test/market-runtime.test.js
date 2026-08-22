@@ -158,6 +158,33 @@ test('does not duplicate an aliased plugin skill as standalone', async () => {
   assert.deepEqual(await runtime.scanStandaloneSkills(market, marketplace), [])
 })
 
+test('treats identical plugin-local copies as plugin references', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    [marketDir + '/plugins/root-plugin/plugin.json']: JSON.stringify({ name: 'root-plugin', skills: 'skills' }),
+    [marketDir + '/plugins/root-plugin/skills/copied/SKILL.md']: skillDoc('copied'),
+    [marketDir + '/skills/copied/SKILL.md']: skillDoc('copied'),
+    [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
+  })
+  const market = { id: 'market', repo: 'example/market' }
+  const marketplace = { plugins: [{ name: 'root-plugin', source: 'plugins/root-plugin', unsupported: false }] }
+
+  assert.deepEqual((await runtime.scanStandaloneSkills(market, marketplace)).map((skill) => skill.skillName), ['standalone'])
+})
+
+test('keeps a distinct root skill standalone when names collide', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    [marketDir + '/plugins/root-plugin/plugin.json']: JSON.stringify({ name: 'root-plugin', skills: 'skills' }),
+    [marketDir + '/plugins/root-plugin/skills/shared/SKILL.md']: skillDoc('shared').replace('# shared', '# plugin variant'),
+    [marketDir + '/skills/shared/SKILL.md']: skillDoc('shared'),
+  })
+  const market = { id: 'market', repo: 'example/market' }
+  const marketplace = { plugins: [{ name: 'root-plugin', source: 'plugins/root-plugin', unsupported: false }] }
+
+  assert.deepEqual((await runtime.scanStandaloneSkills(market, marketplace)).map((skill) => skill.skillName), ['shared'])
+})
+
 test('loads plugin and standalone root skills once each', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
