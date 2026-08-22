@@ -112,6 +112,21 @@ test('keeps plugin-referenced root skills out of the standalone group', async ()
   assert.equal(standalone[0].fullName, 'market/standalone-skills/standalone')
 })
 
+test('treats an Awesome Copilot root skills source as a plugin reference', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    [marketDir + '/plugin.json']: JSON.stringify({
+      name: 'root-plugin',
+      extensions: { 'com.github.awesome-copilot': { skills: ['./skills'] } },
+    }),
+    [marketDir + '/skills/referenced/SKILL.md']: skillDoc('referenced'),
+  })
+  const market = { id: 'market', repo: 'example/market' }
+  const marketplace = { plugins: [{ name: 'root-plugin', source: '.', unsupported: false }] }
+
+  assert.deepEqual(await runtime.scanStandaloneSkills(market, marketplace), [])
+})
+
 test('does not duplicate an aliased plugin skill as standalone', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
@@ -271,7 +286,7 @@ test('cleans a newly added market when setup fails after persistence', async () 
   assert.ok(fixture.commands.some((argv) => argv[0] === 'rm'))
 })
 
-test('does not expose standalone skills in market state', async () => {
+test('exposes standalone skills separately from plugin skills', async () => {
   const fixture = serviceRuntime({
     standaloneSkills: [{
       skillName: 'standalone',
@@ -289,5 +304,11 @@ test('does not expose standalone skills in market state', async () => {
 
   const state = await service.getState()
 
-  assert.equal('standaloneSkills' in state.markets[0], false)
+  assert.deepEqual(state.markets[0].standaloneSkills, [{
+    name: 'standalone',
+    fullName: 'market/standalone-skills/standalone',
+    description: 'Test standalone skill.',
+    whenToUse: null,
+    enabled: true,
+  }])
 })
