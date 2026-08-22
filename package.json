@@ -4,6 +4,9 @@
   "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场，加载 Codex / Claude 技能，并以显式授权注册受支持的 Codex hooks。",
   "type": "module",
   "main": "lib/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-ui-primitives": "*",
     "@deepseek-ai/dsh-hooks-codex": "*"

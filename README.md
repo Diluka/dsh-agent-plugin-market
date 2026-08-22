@@ -105,9 +105,11 @@ dsh plugin --profile web rm dsh-agent-plugin-market
 | --- | --- | --- |
 | Host composition root | `lib/index.js` | DSH 注入、可选 bridge 加载、技能 provider、自动更新和 loopback RPC 装配 |
 | Host runtime | `lib/market-runtime.js` | 路径、配置、市场清单与 SKILL.md 扫描 |
-| Host service | `lib/market-service.js` | Git 市场操作、安装状态、技能开关、hooks 授权与状态视图 |
-| Host Codex adapter | `lib/codex-hook-manager.js` | Codex hooks 发现、批准校验和 bridge Fiber 生命周期 |
-| Host helper | `lib/codex-hooks.js` | Codex hook source 解析、配置指纹和插件环境包装 |
-| Client | `lib/client.js` | 设置页「插件市场」UI（`settings.section` slot），通过 `ctx.connection.rpc` 调用 Host RPC |
+| Host service | `lib/market-service.js` | Git 市场操作、持久化编排、hooks 授权与状态视图 |
+| Host config model | `lib/market-config.js` | 纯配置状态转换：市场、安装状态与技能开关 |
+| Host Codex adapter | `lib/codex-hook-manager.js` | Codex hooks 发现和 bridge Fiber 生命周期 |
+| Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，决定卸载与挂载顺序 |
+| Host helper | `lib/codex-hooks.js` | Codex hook source 解析、审批状态、配置指纹和插件环境包装 |
+| Client | `lib/client.js` | 设置页「插件市场」UI（`settings.section` slot）与可单测的目录模型，通过 `ctx.connection.rpc` 调用 Host RPC |
 
 Hook 元数据按协议保存为 `hookConfigs`。当前只挂载 `codex` 适配器；未来验证 Claude bridge 契约后，可添加并列的协议适配器，而无需重构市场或技能扫描路径。
