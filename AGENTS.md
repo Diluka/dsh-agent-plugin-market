@@ -58,6 +58,7 @@ Run the Node unit suite for core behavior before using the real DSH GUI for
 end-to-end validation.
 
 ```bash
+pnpm lint
 pnpm test
 pnpm typecheck
 node --check lib/*.js test/*.test.js

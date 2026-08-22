@@ -5,6 +5,7 @@
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
+    "lint": "eslint lib test",
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -56,9 +57,11 @@
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.1",
     "@deepseek-ai/dsh-hooks-codex": "0.1.1-rc.1",
+    "@eslint/js": "10.0.1",
     "@platformatic/vfs": "0.4.0",
     "@types/node": "24.13.3",
     "@types/react": "18.3.31",
+    "eslint": "10.9.0",
     "react": "18.3.1",
     "typescript": "5.9.3"
   }
