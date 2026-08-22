@@ -185,7 +185,7 @@ test('keeps a distinct root skill standalone when names collide', async () => {
   assert.deepEqual((await runtime.scanStandaloneSkills(market, marketplace)).map((skill) => skill.skillName), ['shared'])
 })
 
-test('loads plugin and standalone root skills once each', async () => {
+test('keeps standalone root skills disabled by default', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
     '/dsh/agent-plugin-market/config.json': JSON.stringify({
@@ -204,36 +204,17 @@ test('loads plugin and standalone root skills once each', async () => {
 
   const skills = await runtime.collectSkills()
 
-  assert.deepEqual(skills.map((skill) => skill.fullName), [
-    'market/root-plugin/referenced',
-    'market/standalone-skills/standalone',
-  ])
+  assert.deepEqual(skills.map((skill) => skill.fullName), ['market/root-plugin/referenced'])
 })
 
-test('loads a manifest-free market from its root skills directory', async () => {
+test('keeps manifest-free standalone skills disabled by default', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
     '/dsh/agent-plugin-market/config.json': JSON.stringify({
       markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
       installed: {},
       disabledSkills: {},
-      hookApprovals: {},
-    }),
-    [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
-  })
-
-  const skills = await runtime.collectSkills()
-
-  assert.deepEqual(skills.map((skill) => skill.skillName), ['standalone'])
-})
-
-test('honors disabled standalone skills during registration', async () => {
-  const marketDir = '/dsh/agent-plugin-market/markets/market'
-  const runtime = runtimeFor({
-    '/dsh/agent-plugin-market/config.json': JSON.stringify({
-      markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
-      installed: {},
-      disabledSkills: { 'market/standalone-skills/standalone': true },
+      enabledStandaloneSkills: {},
       hookApprovals: {},
     }),
     [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
@@ -242,8 +223,24 @@ test('honors disabled standalone skills during registration', async () => {
   assert.deepEqual(await runtime.collectSkills(), [])
 })
 
+test('loads explicitly enabled standalone skills', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    '/dsh/agent-plugin-market/config.json': JSON.stringify({
+      markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
+      installed: {},
+      disabledSkills: {},
+      enabledStandaloneSkills: { 'market/standalone-skills/standalone': true },
+      hookApprovals: {},
+    }),
+    [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
+  })
+
+  assert.deepEqual((await runtime.collectSkills()).map((skill) => skill.skillName), ['standalone'])
+})
+
 function serviceRuntime({ standaloneSkills }) {
-  const config = { markets: [], installed: {}, disabledSkills: {}, hookApprovals: {} }
+  const config = { markets: [], installed: {}, disabledSkills: {}, enabledStandaloneSkills: {}, hookApprovals: {} }
   const commands = []
   return {
     config,
@@ -353,6 +350,49 @@ test('exposes standalone skills separately from plugin skills', async () => {
     fullName: 'market/standalone-skills/standalone',
     description: 'Test standalone skill.',
     whenToUse: null,
-    enabled: true,
+    enabled: false,
   }])
+})
+
+test('toggles all standalone skills for a market', async () => {
+  const fixture = serviceRuntime({
+    standaloneSkills: [
+      { skillName: 'one', fullName: 'market/standalone-skills/one', description: 'One.', whenToUse: null },
+      { skillName: 'two', fullName: 'market/standalone-skills/two', description: 'Two.', whenToUse: null },
+    ],
+  })
+  fixture.config.markets.push({ id: 'market', name: 'market', repo: 'example/market' })
+  let invalidated = 0
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: { async reconcile() {} },
+    onSkillsChanged() { invalidated++ },
+  })
+
+  const enabled = await service.setStandaloneSkillsEnabled({ marketId: 'market', enabled: true })
+  assert.equal(enabled.count, 2)
+  assert.deepEqual(fixture.config.enabledStandaloneSkills, {
+    'market/standalone-skills/one': true,
+    'market/standalone-skills/two': true,
+  })
+
+  await service.setStandaloneSkillsEnabled({ marketId: 'market', enabled: false })
+  assert.deepEqual(fixture.config.enabledStandaloneSkills, {})
+  assert.equal(invalidated, 2)
+})
+
+test('toggles one standalone skill without changing plugin state', async () => {
+  const fixture = serviceRuntime({ standaloneSkills: [] })
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: { async reconcile() {} },
+    onSkillsChanged() {},
+  })
+
+  await service.setSkillEnabled({ fullName: 'market/standalone-skills/one', enabled: true, standalone: true })
+  assert.deepEqual(fixture.config.enabledStandaloneSkills, { 'market/standalone-skills/one': true })
+  assert.deepEqual(fixture.config.disabledSkills, {})
+
+  await service.setSkillEnabled({ fullName: 'market/standalone-skills/one', enabled: false, standalone: true })
+  assert.deepEqual(fixture.config.enabledStandaloneSkills, {})
 })
