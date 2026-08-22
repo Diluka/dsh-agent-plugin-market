@@ -271,7 +271,7 @@ test('cleans a newly added market when setup fails after persistence', async () 
   assert.ok(fixture.commands.some((argv) => argv[0] === 'rm'))
 })
 
-test('returns standalone skills in the market state', async () => {
+test('does not expose standalone skills in market state', async () => {
   const fixture = serviceRuntime({
     standaloneSkills: [{
       skillName: 'standalone',
@@ -289,11 +289,5 @@ test('returns standalone skills in the market state', async () => {
 
   const state = await service.getState()
 
-  assert.deepEqual(state.markets[0].standaloneSkills, [{
-    name: 'standalone',
-    fullName: 'market/standalone-skills/standalone',
-    description: 'Test standalone skill.',
-    whenToUse: null,
-    enabled: true,
-  }])
+  assert.equal('standaloneSkills' in state.markets[0], false)
 })
