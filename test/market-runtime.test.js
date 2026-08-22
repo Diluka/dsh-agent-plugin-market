@@ -112,6 +112,23 @@ test('keeps plugin-referenced root skills out of the standalone group', async ()
   assert.equal(standalone[0].fullName, 'market/standalone-skills/standalone')
 })
 
+test('treats generic skill arrays as plugin references', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    [marketDir + '/plugin.json']: JSON.stringify({
+      name: 'root-plugin',
+      skills: ['skills/owned-one', 'skills/owned-two'],
+    }),
+    [marketDir + '/skills/owned-one/SKILL.md']: skillDoc('owned-one'),
+    [marketDir + '/skills/owned-two/SKILL.md']: skillDoc('owned-two'),
+    [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
+  })
+  const market = { id: 'market', repo: 'example/market' }
+  const marketplace = { plugins: [{ name: 'root-plugin', source: '.', unsupported: false }] }
+
+  assert.deepEqual((await runtime.scanStandaloneSkills(market, marketplace)).map((skill) => skill.skillName), ['standalone'])
+})
+
 test('treats an Awesome Copilot root skills source as a plugin reference', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
