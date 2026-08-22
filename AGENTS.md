@@ -54,13 +54,14 @@ repository is not a standalone web application.
 
 ## Validation
 
-This project has no unit-test suite. Validate every change at the smallest
-relevant level and use the real DSH GUI for end-to-end behavior.
+Run the Node unit suite for core behavior before using the real DSH GUI for
+end-to-end validation.
 
 ```bash
-node --check lib/index.js
-node --check lib/codex-hooks.js
-node --check lib/client.js
+pnpm lint
+pnpm test
+pnpm typecheck
+node --check lib/*.js test/*.test.js
 git diff --check
 ```
 
