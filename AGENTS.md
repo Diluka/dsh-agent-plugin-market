@@ -59,6 +59,7 @@ end-to-end validation.
 
 ```bash
 pnpm test
+pnpm typecheck
 node --check lib/*.js test/*.test.js
 git diff --check
 ```
