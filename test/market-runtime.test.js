@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { posix as path } from 'node:path'
 import test from 'node:test'
 
+import { create } from '@platformatic/vfs'
+
 import { createMarketRuntime } from '../lib/market-runtime.js'
 import { createMarketService } from '../lib/market-service.js'
 
@@ -9,72 +11,75 @@ function skillDoc(name) {
   return '---\nname: ' + name + '\ndescription: Test ' + name + ' skill.\n---\n\n# ' + name + '\n'
 }
 
-function createMemoryFs(files, aliases = {}) {
-  const nodes = new Map([['/', { type: 'directory' }]])
+// DSH exposes a different Fs service shape; VFS owns the filesystem behavior underneath this adapter.
+function createVfsBackedFs(files, aliases = {}) {
+  const vfs = create({ moduleHooks: false })
   const normalize = (value) => {
     const normalized = path.normalize(String(value || '/'))
     return normalized.startsWith('/') ? normalized : '/' + normalized
   }
-  const aliasEntries = Object.entries(aliases)
-    .map(([from, to]) => [normalize(from), normalize(to)])
-    .sort((left, right) => right[0].length - left[0].length)
-  const canonicalPath = (value) => {
-    const display = normalize(value)
-    for (const [from, to] of aliasEntries) {
-      if (display === from || display.startsWith(from + '/')) return to + display.slice(from.length)
-    }
-    return display
-  }
   const displayPath = (target) => normalize(typeof target === 'string' ? target : target.displayPath)
   const targetPath = (target) => typeof target === 'string'
-    ? canonicalPath(target)
-    : target.targetKey || canonicalPath(target.displayPath)
-  const targetFor = (value) => ({ displayPath: normalize(value), targetKey: canonicalPath(value) })
-  const addDirectory = (dir) => {
-    const parts = normalize(dir).split('/').filter(Boolean)
-    let current = ''
-    for (const part of parts) {
-      current += '/' + part
-      if (!nodes.has(current)) nodes.set(current, { type: 'directory' })
+    ? normalize(target)
+    : target.targetKey || normalize(target.displayPath)
+  const isMissing = (error) => error && error.code === 'ENOENT'
+  const resolve = async (value) => {
+    const display = normalize(value)
+    try {
+      return { displayPath: display, targetKey: await vfs.promises.realpath(display) }
+    } catch (error) {
+      if (isMissing(error)) return { displayPath: display, targetKey: display }
+      throw error
     }
   }
+
   for (const [file, content] of Object.entries(files)) {
-    const target = canonicalPath(file)
-    addDirectory(path.dirname(target))
-    nodes.set(target, { type: 'file', content })
+    const target = normalize(file)
+    vfs.mkdirSync(path.dirname(target), { recursive: true })
+    vfs.writeFileSync(target, content)
+  }
+  for (const [from, to] of Object.entries(aliases)) {
+    const link = normalize(from)
+    vfs.mkdirSync(path.dirname(link), { recursive: true })
+    vfs.symlinkSync(normalize(to), link)
   }
 
   return {
-    async resolve(value) {
-      return targetFor(value)
-    },
+    resolve,
     async stat(target) {
-      const node = nodes.get(targetPath(target))
-      return node ? { type: node.type } : null
+      try {
+        const info = await vfs.promises.stat(targetPath(target))
+        return { type: info.isDirectory() ? 'directory' : info.isFile() ? 'file' : 'other' }
+      } catch (error) {
+        if (isMissing(error)) return null
+        throw error
+      }
     },
     async readText(target) {
-      return nodes.get(targetPath(target)).content
+      return vfs.promises.readFile(targetPath(target), 'utf8')
     },
     async writeText(target, content) {
       const file = targetPath(target)
-      addDirectory(path.dirname(file))
-      nodes.set(file, { type: 'file', content })
+      await vfs.promises.mkdir(path.dirname(file), { recursive: true })
+      await vfs.promises.writeFile(file, content)
     },
     async listDir(target) {
-      const dir = targetPath(target)
-      const prefix = dir === '/' ? '/' : dir + '/'
-      const entries = []
-      for (const [entryPath, node] of nodes) {
-        if (entryPath === dir || !entryPath.startsWith(prefix)) continue
-        const name = entryPath.slice(prefix.length)
-        if (name.includes('/')) continue
-        entries.push({
-          name,
-          type: node.type,
-          target: { displayPath: path.join(displayPath(target), name), targetKey: entryPath },
-        })
+      try {
+        const entries = await vfs.promises.readdir(targetPath(target), { withFileTypes: true })
+        const dir = displayPath(target)
+        const result = []
+        for (const entry of entries) {
+          result.push({
+            name: entry.name,
+            type: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
+            target: await resolve(path.join(dir, entry.name)),
+          })
+        }
+        return result.sort((left, right) => left.name.localeCompare(right.name))
+      } catch (error) {
+        if (isMissing(error)) return []
+        throw error
       }
-      return entries.sort((a, b) => a.name.localeCompare(b.name))
     },
     contains(parent, child) {
       const parentPath = targetPath(parent)
@@ -86,7 +91,7 @@ function createMemoryFs(files, aliases = {}) {
 
 function runtimeFor(files, aliases) {
   return createMarketRuntime({
-    fs: createMemoryFs(files, aliases),
+    fs: createVfsBackedFs(files, aliases),
     subprocess: {},
     dshHome: '/dsh',
   })

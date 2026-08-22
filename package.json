@@ -50,5 +50,8 @@
     "market",
     "skills",
     "codex"
-  ]
+  ],
+  "devDependencies": {
+    "@platformatic/vfs": "0.4.0"
+  }
 }
