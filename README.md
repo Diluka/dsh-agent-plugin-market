@@ -103,6 +103,11 @@ dsh plugin --profile web rm dsh-agent-plugin-market
 
 | 半端 | 文件 | 职责 |
 | --- | --- | --- |
-| Host | `lib/index.js` | git 市场克隆/更新、清单解析、SKILL.md 扫描、Codex hooks 发现/授权/bridge Fiber 生命周期、`ctx.skills` provider 注册、loopback Connection RPC channel |
+| Host composition root | `lib/index.js` | DSH 注入、可选 bridge 加载、技能 provider、自动更新和 loopback RPC 装配 |
+| Host runtime | `lib/market-runtime.js` | 路径、配置、市场清单与 SKILL.md 扫描 |
+| Host service | `lib/market-service.js` | Git 市场操作、安装状态、技能开关、hooks 授权与状态视图 |
+| Host Codex adapter | `lib/codex-hook-manager.js` | Codex hooks 发现、批准校验和 bridge Fiber 生命周期 |
 | Host helper | `lib/codex-hooks.js` | Codex hook source 解析、配置指纹和插件环境包装 |
 | Client | `lib/client.js` | 设置页「插件市场」UI（`settings.section` slot），通过 `ctx.connection.rpc` 调用 Host RPC |
+
+Hook 元数据按协议保存为 `hookConfigs`。当前只挂载 `codex` 适配器；未来验证 Claude bridge 契约后，可添加并列的协议适配器，而无需重构市场或技能扫描路径。
