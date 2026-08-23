@@ -9,45 +9,64 @@ repository is not a standalone web application.
 
 ## Repository Layout
 
-- `lib/index.js`: Host plugin. Owns market state, Git operations, skill
-  registration, hooks authorization, generated hook files, hook Fibers, and
-  HTTP RPC routes.
-- `lib/codex-hooks.js`: Pure Host helpers for hook-source parsing, stable
-  fingerprints, storage keys, and command environment injection.
+- `lib/index.js`: Host composition root. Wires injected DSH services to the
+  market runtime, market service, hook manager, skills provider, startup update,
+  and loopback RPC routes.
+- `lib/market-runtime.js`: Host runtime for DSH-home paths, configuration I/O,
+  Git command execution, market/plugin manifest parsing, and skill scanning.
+- `lib/market-service.js`: Host lifecycle service for market Git operations,
+  plugin installation, skill state, hooks authorization, state views, and
+  startup auto-update.
+- `lib/market-config.js`: Pure configuration state transitions for markets,
+  installed plugins, skill switches, and related cleanup.
+- `lib/codex-hook-manager.js`: Codex hook inspection, approval reconciliation,
+  generated bridge configuration, and hook Fiber lifecycle management.
+- `lib/hook-reconcile-plan.js`: Pure desired-versus-active hook reconciliation
+  plan.
+- `lib/codex-hooks.js`: Pure helpers for hook-source parsing, path validation,
+  stable fingerprints and storage keys, plus command-environment injection.
 - `lib/client.js`: Browser plugin. It is plain JavaScript loaded by
   `window.__ModuleLoader__`; use `require`, `React.createElement`, and no JSX,
   TypeScript, `import`, or bundler-only features.
 - `cordis.patch.yml`: Adds the package to the web profile composition.
-- `package.json`: DSH runtime packages are peer dependencies. The Codex hook
-  bridge and protocol are optional peers so markets and skills work without them.
+- `package.json`: `@deepseek-ai/dsh-client-ui-primitives` is a required peer
+  dependency. `@deepseek-ai/dsh-hooks-codex` is an optional peer; when absent,
+  the UI provides the runtime install command for it and
+  `@deepseek-ai/dsh-hook-protocol`.
 
 ## Development Rules
 
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- Preserve hook safety invariants: hooks are disabled by default, require the
-  existing double-confirmation flow, are fingerprint-approved, stay within the
-  plugin root, receive only the documented plugin environment variables, and
-  are disposed when disabled, changed, updated, or removed.
+- Preserve hook safety invariants: hooks are disabled by default, the UI uses
+  double confirmation, approvals match the configuration fingerprint, hook
+  configuration file paths remain inside the plugin root, and command hooks
+  receive only `PLUGIN_ROOT`, `PLUGIN_DATA`, `CLAUDE_PLUGIN_ROOT`, and
+  `CLAUDE_PLUGIN_DATA`. Dispose hook Fibers when hooks are disabled, changed,
+  updated, or removed.
 - Treat market content and hook configuration as untrusted input. Keep path
-  containment checks. On a market update, only hooks actively mounted before
-  the pull may be re-enabled against the new configuration; all other hook
-  approvals remain revoked.
+  containment checks. When a market pull obtains a new commit, revoke that
+  market's approvals and restore only hooks that were actively mounted before
+  the pull against the new configuration.
 - Use `@deepseek-ai/dsh-client-ui-primitives` before making a new UI control.
-  The page currently uses `Button`, `Input`, `Pill`, and `Menu`. Use
-  `--dsw-*` theme tokens for any layout or missing-control adapter; never add
-  fixed light/dark colors. The hooks switch is a small adapter because the
-  current primitives package does not export a Switch component.
+  The page uses `Button`, `Input`, `Pill`, `Menu`, `Tooltip`, and
+  `DisclosureRow`. Use `--dsw-*` theme tokens for layout or any missing-control
+  adapter; never add fixed light/dark colors. The hooks switch is a small native
+  button adapter.
 - Keep the settings section ID stable as `skills-and-hooks` unless the DSH
   settings integration is intentionally migrated. The visible label is
-  `技能与 Hooks`.
+  `技能与挂钩`.
+- Treat `lib/`, `package.json`, `cordis.patch.yml`, and applicable tests as the
+  source of truth for repository behavior. When behavior changes, update every
+  tracked Markdown document that describes it; do not describe Codex bridge
+  event support beyond the verified installed bridge/protocol contract.
 - Use exclusive local debugging: link the Web profile to this repository root
   and develop here. Do not use a separate Git worktree for debugging; switching
   branches in the root checkout is allowed when needed.
 - Do not start a replacement Vite server for the existing DSH GUI. Client
-  changes need a page refresh; claim HMR only after verifying the DSH checkout's
-  `pnpm run dev:web` watcher is running.
+  changes need a page refresh unless the DSH checkout's `pnpm run dev:web`
+  watcher is running; claim HMR only after verifying that watcher.
 - Do not restart DSH autonomously. Host and package changes need a restart, so
   ask the user to restart and confirm the current state, or end the turn asking
   them to message again after restarting.
@@ -68,15 +87,16 @@ git diff --check
 For UI, link this repository root into the target DSH web profile. For Host or
 package changes, ask the user to restart DSH and confirm it has restarted, then
 test the existing GUI at `http://127.0.0.1:3080` with `agent-browser`. Do not
-use curl as UI evidence.
-Check the settings entry, market controls, disabled/enabled switch contrast,
-and both light and dark themes after visual changes.
+use curl as UI evidence. Check the settings entry, market controls,
+disabled/enabled switch contrast, and both light and dark themes after visual
+changes.
 
-For hooks, create disposable local Git market fixtures under `test-repos/`
-and trigger a real DSH tool call. Verify that the enabled hook receives the
-event, disabling stops it, and a market update attempts to reactivate a hook
-that was active before the pull. Remove the registered market and marker data
-after validation.
+The Node suite covers configuration, runtime scanning, hook helpers,
+reconciliation planning, and catalog-model behavior. For manual hook E2E
+verification, create a disposable local Git market fixture under ignored
+`test-repos/`, trigger a real DSH tool call, verify enabled delivery and disable
+disposal, then update the market to check restoration of a hook that was active
+before the pull. Remove the registered market and marker data after validation.
 
 ## Required Skill Routing
 

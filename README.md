@@ -1,12 +1,12 @@
 # dsh-agent-plugin-market
 
-DSH（DeepSeek Harness）插件市场：将 **git 仓库**作为 agent 内容插件市场，安装并原地加载其中的技能到 DSH 技能系统。
+DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场。它克隆市场仓库，按已安装插件或显式启用的根 `skills/` 目录发现技能，并通过 DSH 技能 provider 原地提供这些技能。
 
-- **兼容格式**：Codex / Claude / Awesome Copilot 内容插件（`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.github/plugin/marketplace.json`、`SKILL.md` + YAML frontmatter）
-- **原地加载**：市场仓库 `git clone` 到 `~/.dsh/agent-plugin-market/markets/<id>/`，安装插件不复制文件，技能路径原地注册进 DSH（`resourceBase` 指向克隆目录，技能内 `references/`、`scripts/` 相对资源可用）
-- **技能开关**：已安装插件的技能默认启用；市场根 `skills/` 中的独立技能默认关闭。两者都可单独启用/禁用，关闭后不进入技能目录
-- **Codex hooks（可选）**：发现插件 manifest 的 hooks 配置；用户逐插件显式确认后，以可选的 `@deepseek-ai/dsh-hooks-codex` bridge 注册受支持的 hook 点
-- **设置页 UI**：设置菜单新增「技能与挂钩」区段，管理市场（添加 / 更新 / 移除）与插件（安装 / 卸载 / 技能开关 / hooks 授权）
+- **市场与插件清单**：市场清单依次识别 `.agents/plugins/marketplace.json`、`.claude-plugin/marketplace.json`、`.cursor-plugin/marketplace.json`、`.github/plugin/marketplace.json` 和根 `marketplace.json`；插件清单依次识别 `.codex-plugin/plugin.json`、`.claude-plugin/plugin.json` 和根 `plugin.json`。
+- **技能生命周期**：已安装插件的有效技能默认启用；市场根 `skills/` 中未被插件引用的独立技能默认关闭，并可单独或按市场批量启用。
+- **原地加载**：安装插件只保存安装状态，不复制市场文件。技能的 `resourceBase` 指向克隆后的技能目录，因此技能内的相对资源可用。
+- **Codex hooks（可选）**：从 Codex 插件清单发现 hooks 配置；只有已安装的插件才能启用它们。启用需要设置页的双重确认、配置指纹审批和可用的 `@deepseek-ai/dsh-hooks-codex` bridge。
+- **设置页**：设置菜单添加「技能与挂钩」区段，提供市场、插件、技能和 hooks 的管理及目录筛选。
 
 ## 安装
 
@@ -14,82 +14,106 @@ DSH（DeepSeek Harness）插件市场：将 **git 仓库**作为 agent 内容插
 dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 ```
 
-安装完成后**重启 DeepSeek Harness**，设置 → 技能与挂钩 即可使用。DSH 运行时包通过 peer dependencies 由当前 DSH profile 提供；市场与技能功能不依赖 Codex hooks bridge，bridge 缺失时设置页会提示安装命令并禁用 hooks 开关。市场管理仅允许通过本机 loopback 地址访问，以保护本机 Git 操作和 hooks 执行。
+重启 DeepSeek Harness 后，在设置 -> 技能与挂钩中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
+
+`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 以 loopback authority 注册，客户端也会在非本机连接时拒绝显示市场操作，以保护本机 Git 操作和 hooks 执行。
 
 ### 启用 Codex hooks（可选）
 
-只有需要执行已明确授权的 Codex hooks 时，才在同一 profile 中安装 bridge 与协议包，然后重启 DSH：
+需要执行已授权的 Codex hooks 时，按设置页提供的命令在同一 profile 中安装 bridge 及其运行时所需协议包，再重启 DSH：
 
 ```bash
 dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex @deepseek-ai/dsh-hook-protocol
 ```
 
-手动等效步骤：
-
-```bash
-# 1. 安装市场插件
-dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
-
-# 2. 确认组合行（插件包自带 cordis.patch.yml，通常已自动应用）
-#    ~/.dsh/profiles/web/cordis.patch.yml 中应有：
-#    - insert:
-#        - id: dsh-agent-plugin-market
-#          name: 'dsh-agent-plugin-market'
-
-# 3. 重启 DeepSeek Harness
-```
-
 ## 使用
 
-1. **添加市场**：输入任意 git 仓库地址（ssh / https 均可），可选指定**分支 / 标签 / commit id**（默认使用仓库默认分支）；仓库需包含市场清单，或在根 `skills/` 中提供可用独立技能。
-   （市场清单查找顺序：`.agents/plugins/marketplace.json` → `.claude-plugin/marketplace.json` → `.cursor-plugin/marketplace.json` → `.github/plugin/marketplace.json` → 仓库根 `marketplace.json`）
-2. **安装插件**：市场清单中每个插件一行（`source` 为仓库内路径，或 `{"source": "local", "path": "./"}` 指向仓库根）。当 `{"source": "url", "url": "..."}` 指向当前市场仓库时，也会按仓库根插件处理；这兼容同时将自身作为市场与插件发布的仓库。点击「安装」即原地注册其技能
-3. **自动更新**：**DSH 每次启动时自动对全部市场执行 `git pull --ff-only`**（失败不影响启动，仅记录日志）；分支/默认分支市场随更新，**tag/commit 固定引用不自动更新**（「更新」按钮会提示无需更新）
-4. **技能开关**：已安装插件下列出全部技能，默认全开；关闭后技能不再出现在 DSH 技能目录
-5. **Codex hooks 授权**：安装的 Codex 插件检测到 hooks 配置后默认关闭。bridge 缺失时 hooks 配置仍可见，但开关保持禁用；安装 bridge 并重启后，开关需要再次点击确认。可更新市场拉取到任何新提交时，更新前正在运行的 hooks 会按新配置尝试重新激活；未在运行的 hooks 仍需显式确认。
+1. **添加市场**：输入 SSH 或 HTTPS Git 仓库地址；可选择默认分支、分支、标签或 commit。市场必须提供含 `plugins` 数组的市场清单，或在根 `skills/` 目录中提供至少一个有效的独立技能。
+2. **安装插件**：市场清单的每项插件由 `source` 指向市场内的插件目录。字符串 `source` 和 `{"source":"local","path":"<仓库内路径>"}` 都可用；`./` 指向仓库根。`{"source":"url","url":"..."}` 仅在 URL 规范化后等于当前市场仓库时被视为仓库根插件，其他 URL 来源会标记为不支持。所有路径都必须解析在市场根目录内。
+3. **更新市场**：Host 启动时会依次对默认分支和分支引用执行 `git pull --ff-only`；失败只记录错误并继续其他市场。标签和 commit 是固定引用，手动或自动更新都会跳过。更新按钮复用相同逻辑。
+4. **管理技能**：安装插件后，其有效技能默认进入 DSH 技能目录，可逐项关闭。根 `skills/` 中未被插件引用的技能需要先显式启用，支持逐项或整组切换。
+5. **管理 hooks**：已安装且声明 Codex hooks 的插件初始未授权。bridge 可用时，第一次点击开关只显示确认，第二次点击才保存当前配置指纹并尝试挂载。授权状态和已挂载状态分别显示。
 
-## 市场仓库格式（Codex 兼容）
+市场清单查找顺序如下：
 
 ```text
-<market repo>/
-├── .agents/plugins/marketplace.json     # 市场清单
-└── plugins/<plugin-name>/
-    ├── .codex-plugin/plugin.json        # 插件清单（skills / hooks 字段）
-    ├── hooks/
-    │   └── hooks.json                   # 未声明 hooks 时的 Codex 默认位置
-    └── skills/
-        └── <skill-name>/
-            └── SKILL.md                 # frontmatter: name / description / when_to_use
+.agents/plugins/marketplace.json
+.claude-plugin/marketplace.json
+.cursor-plugin/marketplace.json
+.github/plugin/marketplace.json
+marketplace.json
 ```
 
-`SKILL.md` 示例：
+## 市场与技能格式
+
+一个常见的市场布局如下：
+
+```text
+<market-repo>/
+├── .agents/plugins/marketplace.json
+├── plugins/<plugin-name>/
+│   ├── .codex-plugin/plugin.json
+│   ├── hooks/
+│   │   └── hooks.json
+│   └── skills/
+│       └── <skill-name>/
+│           └── SKILL.md
+└── skills/
+    └── <standalone-skill>/
+        └── SKILL.md
+```
+
+插件清单的 `skills` 可以是字符串、字符串数组，或含 `paths` 的对象；未声明时默认扫描插件的 `skills` 目录。Awesome Copilot 兼容布局使用 `extensions["com.github.awesome-copilot"].skills`，其中只接受指向市场根 `./skills` 或其子路径的条目。
+
+每个技能源目录只扫描两类直接子项：子目录中的 `SKILL.md`，以及目录自身的直接 `.md` 文件。有效技能必须具有 frontmatter，且至少包含：
 
 ```markdown
 ---
 name: my-skill
 description: 说明何时应触发该技能。
-when_to_use: 可选补充。
+whenToUse: 可选补充。
 ---
 
 技能正文（Markdown 指令）。
 ```
 
-Codex 插件可在 manifest 中声明一份或多份 hooks 配置，也可省略字段并使用默认的 `./hooks/hooks.json`：
+`name` 必须匹配 `[a-z0-9]+(?:-[a-z0-9]+)*`；`description` 不能为空。可选触发说明接受 `whenToUse` 或 `when_to_use`。根 `skills/` 中与某个插件技能同一文件、同一真实文件目标或内容相同的技能不会重复作为独立技能列出。
+
+## Codex hooks
+
+只有 `.codex-plugin/plugin.json` 中的 `hooks` 会形成 Codex hooks 配置。该字段可以省略、写成一个插件根相对 JSON 路径、一个内联 JSON 对象，或由两者组成的数组：
 
 ```json
 {
   "skills": "./skills",
-  "hooks": "./hooks/hooks.json"
+  "hooks": [
+    "./hooks/hooks.json",
+    { "hooks": {} }
+  ]
 }
 ```
 
-市场只接受插件根目录内的 hooks 路径，并在注册前为每个 command hook 注入插件根目录与持久数据目录的环境变量。它复用 DSH 的 Codex bridge，当前映射 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop` 五个点；同步 `command` hooks 才会执行。每个市场插件的 hooks 都需要显式授权；市场更新会按新配置尝试重新激活更新前已激活的 hooks，其他配置变更需要再次授权。
+省略 `hooks` 时，插件会尝试读取 `./hooks/hooks.json`。文件路径必须以 `./` 开头、位于插件根目录内、没有 `..`、反斜杠或空路径段，且不能是符号链接；目标必须是包含 JSON 对象的普通文件。内联对象不经过文件读取。
 
-## 配置存储
+为每份已批准的 hooks 配置生成 bridge 配置前，插件会为 `type: "command"` 或未声明 `type` 的 command 项注入以下环境变量：
 
-- 市场/插件/技能开关/hooks 授权配置：`~/.dsh/agent-plugin-market/config.json`
-- 市场克隆目录：`~/.dsh/agent-plugin-market/markets/<id>/`
-- 市场生成的 bridge 配置与插件数据：`~/.dsh/agent-plugin-market/generated-hooks/`、`~/.dsh/agent-plugin-market/hook-data/`
+- `PLUGIN_ROOT`：插件根目录。
+- `PLUGIN_DATA`：该市场插件的持久数据目录。
+- `CLAUDE_PLUGIN_ROOT`：`PLUGIN_ROOT` 的兼容别名。
+- `CLAUDE_PLUGIN_DATA`：`PLUGIN_DATA` 的兼容别名。
+
+插件会把经验证的配置交给已安装的 Codex bridge。具体支持哪些事件点以及非 command hook 的执行语义由所安装的 bridge 和协议版本决定，不在本插件中硬编码。
+
+审批使用配置来源和内容的 SHA-256 指纹。禁用、配置指纹变化、插件卸载和市场移除都会处置已挂载的 hook Fibers。市场更新实际拉取到新提交时，所有该市场的旧审批都会撤销；只有拉取前已处于挂载状态的 hooks 才会根据新配置自动恢复审批并重新挂载，其他 hooks 仍需双重确认。
+
+## 运行时存储
+
+运行时基目录是文件型 DSH settings document 的父目录加上 `agent-plugin-market`。以下以 `<dsh-home>` 表示该父目录：
+
+- 市场、插件、技能开关和 hooks 审批：`<dsh-home>/agent-plugin-market/config.json`
+- 市场克隆目录：`<dsh-home>/agent-plugin-market/markets/<id>/`
+- 生成的 bridge 配置：`<dsh-home>/agent-plugin-market/generated-hooks/`
+- 每个市场插件的 hooks 数据：`<dsh-home>/agent-plugin-market/hook-data/`
 
 ## 卸载
 
@@ -97,32 +121,35 @@ Codex 插件可在 manifest 中声明一份或多份 hooks 配置，也可省略
 dsh plugin --profile web rm dsh-agent-plugin-market
 ```
 
-并从 `~/.dsh/profiles/web/cordis.patch.yml` 移除对应两行，重启后生效。
+如果 profile 的 `cordis.patch.yml` 仍保留该包的插入条目，请移除整个 `dsh-agent-plugin-market` 插入条目后重启 DSH。
 
 ## 开发与验证
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
-pnpm typecheck
 pnpm test
+pnpm typecheck
+node --check lib/*.js test/*.test.js
+git diff --check
 ```
 
-- `pnpm lint` 使用根 flat-config ESLint，以 `lib/` 与 `test/` 为目标；配置忽略 `test-repos/` fixture。
-- `pnpm typecheck` 通过 `tsconfig.json` 对 `lib/` 及本地客户端 bundle 声明执行 JavaScript + JSDoc 检查，不生成构建产物。
-- `pnpm test` 使用 Node 原生 `node:test`；市场扫描测试以 `@platformatic/vfs` 提供内存文件系统和 symlink 行为。
+- `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
+- `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
+- `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
 
 ## 架构
 
 | 半端 | 文件 | 职责 |
 | --- | --- | --- |
-| Host composition root | `lib/index.js` | DSH 注入、可选 bridge 加载、技能 provider、自动更新和 loopback RPC 装配 |
-| Host runtime | `lib/market-runtime.js` | 路径、配置、市场清单与 SKILL.md 扫描 |
-| Host service | `lib/market-service.js` | Git 市场操作、持久化编排、hooks 授权与状态视图 |
-| Host config model | `lib/market-config.js` | 纯配置状态转换：市场、安装状态与技能开关 |
-| Host Codex adapter | `lib/codex-hook-manager.js` | Codex hooks 发现和 bridge Fiber 生命周期 |
-| Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，决定卸载与挂载顺序 |
-| Host helper | `lib/codex-hooks.js` | Codex hook source 解析、审批状态、配置指纹和插件环境包装 |
-| Client | `lib/client.js` | 设置页「技能与挂钩」UI（`settings.section` slot）与可单测的目录模型，通过 `ctx.connection.rpc` 调用 Host RPC |
+| Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与 loopback RPC。 |
+| Host runtime | `lib/market-runtime.js` | 管理运行时路径和配置持久化，解析市场/插件清单，扫描与读取技能。 |
+| Host service | `lib/market-service.js` | 执行市场 Git 生命周期、安装状态、技能开关、hooks 授权、状态视图和启动自动更新。 |
+| Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、技能开关和审批清理。 |
+| Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
+| Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
+| Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
+| Client | `lib/client.js` | 通过 `ctx.connection.rpc` 调用 Host RPC，注册 `settings.section` 中的「技能与挂钩」页面和可单测的目录模型。 |
+| Profile composition | `cordis.patch.yml` | 将双端插件包插入 web profile。 |
 
-Hook 元数据按协议保存为 `hookConfigs`。当前只挂载 `codex` 适配器；未来验证 Claude bridge 契约后，可添加并列的协议适配器，而无需重构市场或技能扫描路径。
+Hook 元数据按协议键存入 `hookConfigs`；当前实现只挂载 `codex` 适配器。
