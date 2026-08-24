@@ -168,3 +168,16 @@ test('fingerprints workspace identity, title, path, and removal', async () => {
   assert.notEqual(workspace.fingerprint(current), workspace.fingerprint([{ id: 'one', title: 'One', path: '/moved' }, current[1]]))
   assert.notEqual(workspace.fingerprint(current), workspace.fingerprint([current[0]]))
 })
+
+test('matches shipped workspace action menus for the config entry', async () => {
+  const workspaceMenu = (await loadClient()).workspaceMenu
+  const items = [{ id: 'rename' }, { id: 'delete' }]
+  const workspaces = [{ id: 'one', title: 'One', path: '/one' }]
+
+  assert.equal(workspaceMenu.titleFromActionLabel('工作区“One”的操作'), 'One')
+  assert.equal(workspaceMenu.titleFromActionLabel('Workspace actions for One'), 'One')
+  assert.equal(workspaceMenu.titleFromActionLabel('rename'), null)
+  assert.equal(workspaceMenu.isActionMenu(items), true)
+  assert.equal(workspaceMenu.isActionMenu([{ id: 'rename' }]), false)
+  assert.deepEqual(workspaceMenu.workspaceFromActionMenu({ items, anchor: { props: { 'aria-label': '工作区“One”的操作' } } }, workspaces), workspaces[0])
+})
