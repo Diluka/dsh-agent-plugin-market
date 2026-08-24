@@ -4,11 +4,11 @@ import test from 'node:test'
 import vm from 'node:vm'
 
 const clientPath = new URL('../lib/client.js', import.meta.url)
-let catalogPromise
+let clientPromise
 
-async function loadCatalog() {
-  if (!catalogPromise) {
-    catalogPromise = (async () => {
+async function loadClient() {
+  if (!clientPromise) {
+    clientPromise = (async () => {
       let registration
       const context = {
         window: {
@@ -23,11 +23,15 @@ async function loadCatalog() {
       assert.ok(registration)
       const client = registration.factory(() => ({}))
       assert.equal(typeof client.apply, 'function')
-      assert.deepEqual(Array.from(client.inject), ['connection', 'slots'])
-      return client.catalog
+      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces'])
+      return client
     })()
   }
-  return catalogPromise
+  return clientPromise
+}
+
+async function loadCatalog() {
+  return (await loadClient()).catalog
 }
 
 test('normalizes catalog text and requires every search term', async () => {
@@ -120,4 +124,47 @@ test('counts only the market state represented by the catalog', async () => {
     availableSkills: 5,
     availableHooks: 2,
   })
+})
+
+test('uses effective workspace plugin state for catalog filtering and statistics', async () => {
+  const catalog = await loadCatalog()
+  const market = {
+    plugins: [
+      { name: 'global-disabled', installed: true, enabled: false, skills: [{ enabled: false }] },
+      { name: 'workspace-only', installed: false, enabled: true, skills: [{ enabled: true }] },
+    ],
+    standaloneSkills: [],
+  }
+
+  assert.equal(catalog.pluginEnabled(market.plugins[0]), false)
+  assert.equal(catalog.pluginEnabled(market.plugins[1]), true)
+  assert.deepEqual(Array.from(catalog.catalogForMarket(market, '', 'installed').matches, (match) => match.plugin.name), ['workspace-only'])
+  assert.equal(catalog.catalogStats([market]).installedPlugins, 1)
+})
+
+test('normalizes workspace list snapshots for the scope selector', async () => {
+  const workspace = (await loadClient()).workspace
+
+  const items = workspace.itemsFromSnapshot({
+    items: [
+      { workspaceId: 'one', title: 'One', path: '/one' },
+      { workspaceId: 'missing-title', path: '/missing-title' },
+      { workspaceId: 'missing-path', title: 'Missing path' },
+      null,
+    ],
+  })
+  assert.deepEqual(Array.from(items, (item) => ({ ...item })), [{ id: 'one', title: 'One', path: '/one' }])
+  assert.deepEqual(Array.from(workspace.itemsFromSnapshot({})), [])
+})
+
+test('fingerprints workspace identity, title, path, and removal', async () => {
+  const workspace = (await loadClient()).workspace
+  const current = [
+    { id: 'one', title: 'One', path: '/one' },
+    { id: 'two', title: 'Two', path: '/two' },
+  ]
+
+  assert.notEqual(workspace.fingerprint(current), workspace.fingerprint([{ id: 'one', title: 'Renamed', path: '/one' }, current[1]]))
+  assert.notEqual(workspace.fingerprint(current), workspace.fingerprint([{ id: 'one', title: 'One', path: '/moved' }, current[1]]))
+  assert.notEqual(workspace.fingerprint(current), workspace.fingerprint([current[0]]))
 })
