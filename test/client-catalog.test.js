@@ -21,7 +21,10 @@ async function loadClient() {
         filename: clientPath.pathname,
       })
       assert.ok(registration)
-      const client = registration.factory(() => ({}))
+      const client = registration.factory((id) => {
+        if (id === 'react') return {}
+        throw new Error('unexpected external require: ' + id)
+      })
       assert.equal(typeof client.apply, 'function')
       assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces'])
       return client

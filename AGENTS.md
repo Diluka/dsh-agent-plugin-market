@@ -26,8 +26,10 @@ repository is not a standalone web application.
 - `lib/codex-hooks.js`: Pure helpers for hook-source parsing, path validation,
   stable fingerprints and storage keys, plus command-environment injection.
 - `lib/client.js`: Browser plugin. It is plain JavaScript loaded by
-  `window.__ModuleLoader__`; use `require`, `React.createElement`, and no JSX,
-  TypeScript, `import`, or bundler-only features.
+  `window.__ModuleLoader__`; split catalog models, shared controls, settings
+  section, and workspace dialog into internal functions/sections in this file;
+  use `require`, `React.createElement`, and no JSX, TypeScript, `import`, or
+  bundler-only features.
 - `cordis.patch.yml`: Adds the package to the web profile composition.
 - `package.json`: `@deepseek-ai/dsh-client-ui-primitives` is a required peer
   dependency. `@deepseek-ai/dsh-hooks-codex` is an optional peer; when absent,

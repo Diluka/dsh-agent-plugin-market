@@ -153,7 +153,7 @@ git diff --check
 | Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
 | Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
-| Client | `lib/client.js` | 通过 `ctx.connection.rpc` 调用 Host RPC，注册 `settings.section` 中的「技能与挂钩」页面和可单测的目录模型。 |
+| Client | `lib/client.js` | 浏览器入口，注册「技能与挂钩」设置页和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
 | Profile composition | `cordis.patch.yml` | 将双端插件包插入 web profile。 |
 
 Hook 元数据按协议键存入 `hookConfigs`；当前实现只挂载 `codex` 适配器。
