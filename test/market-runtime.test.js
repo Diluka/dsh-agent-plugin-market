@@ -70,9 +70,9 @@ function createVfsBackedFs(files, aliases = {}, writes = []) {
     async readText(target) {
       return vfs.promises.readFile(targetPath(target), 'utf8')
     },
-    async writeText(target, content, expected) {
+    async writeText(target, content, expected, signal, sandboxPolicy) {
       const file = targetPath(target)
-      writes.push({ path: file, content, expected })
+      writes.push({ path: file, content, expected, signal, sandboxPolicy })
       await vfs.promises.mkdir(path.dirname(file), { recursive: true })
       await vfs.promises.writeFile(file, content)
     },
@@ -342,6 +342,18 @@ test('ignores a workspace config file symlink', async () => {
   assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace' })).map((skill) => skill.fullName), ['market/plugin/plugin'])
 })
 
+test('ignores the home directory as a workspace config root', async () => {
+  const runtime = createMarketRuntime({
+    fs: createVfsBackedFs({ '/home/me/.keep': '' }),
+    subprocess: {},
+    dshHome: '/home/me/.dsh',
+  })
+
+  assert.equal(runtime.isHomeWorkspace('/home/me'), true)
+  assert.equal(await runtime.resolveWorkspaceConfig('/home/me'), null)
+  await assert.rejects(() => runtime.saveWorkspaceConfig('/home/me', {}), /工作区配置路径不可用/)
+})
+
 test('writes new workspace configs with create-if-absent intent', async () => {
   const writes = []
   const fs = createVfsBackedFs({ '/workspace/.keep': '' }, {}, writes)
@@ -362,6 +374,7 @@ test('writes new workspace configs with create-if-absent intent', async () => {
 
   assert.equal(writes[0].path, '/workspace/.dsh/agent-plugin-market.json')
   assert.deepEqual(writes[0].expected, { kind: 'createIfAbsent' })
+  assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/workspace' })
   assert.deepEqual(JSON.parse(writes[0].content), {
     version: 1,
     plugins: { 'market/plugin': true },
@@ -381,6 +394,7 @@ test('writes existing workspace configs with replace-if-version intent', async (
   await runtime.saveWorkspaceConfig('/workspace', { standaloneSkills: { 'market/standalone-skills/skill': true } })
 
   assert.deepEqual(writes[0].expected, { kind: 'replaceIfVersion', version })
+  assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/workspace' })
   assert.deepEqual(JSON.parse(writes[0].content), {
     version: 1,
     plugins: {},
@@ -595,4 +609,23 @@ test('writes and clears workspace overrides without changing global defaults', a
   assert.deepEqual(fixture.workspaceConfigs['/workspace-a'], { version: 1, plugins: {}, pluginSkills: {}, standaloneSkills: {} })
   assert.equal(invalidated, 3)
   await assert.rejects(() => service.setWorkspacePluginEnabled({ workspaceId: 'missing', marketId: 'market', pluginName: 'plugin', mode: 'enabled' }), /工作区/)
+})
+
+test('hides home workspace entries from configurable workspace state', async () => {
+  const fixture = serviceRuntime({ standaloneSkills: [] })
+  fixture.runtime.isHomeWorkspace = (workspacePath) => workspacePath === '/home/me'
+  const home = { id: 'home', title: 'me', path: '/home/me' }
+  const repo = { id: 'repo', title: 'repo', path: '/home/me/repo' }
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: { async reconcile() {} },
+    workspaces: {
+      list: () => [home, repo],
+      get: (id) => ({ home, repo })[id],
+    },
+    onSkillsChanged() {},
+  })
+
+  assert.deepEqual((await service.getState()).workspaces, [repo])
+  await assert.rejects(() => service.clearWorkspaceOverrides({ workspaceId: 'home' }), /工作区不存在或已移除/)
 })

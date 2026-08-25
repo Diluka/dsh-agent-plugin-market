@@ -117,7 +117,7 @@ whenToUse: 可选补充。
 - 生成的 bridge 配置：`<dsh-home>/agent-plugin-market/generated-hooks/`
 - 每个市场插件的 hooks 数据：`<dsh-home>/agent-plugin-market/hook-data/`
 
-每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。它只包含 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组布尔覆盖值；没有某个键时继承全局状态。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
+每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。它只包含 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组布尔覆盖值；没有某个键时继承全局状态。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
 
 ## 卸载
 
