@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-client-runtime": "*",
     "@deepseek-ai/dsh-client-ui-primitives": "*",
     "@deepseek-ai/dsh-hooks-codex": "*"
   },
@@ -29,7 +30,8 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-connection"
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime"
       ],
       "platform": "web"
     }

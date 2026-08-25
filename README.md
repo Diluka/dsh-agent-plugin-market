@@ -4,6 +4,7 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 - **市场与插件清单**：市场清单依次识别 `.agents/plugins/marketplace.json`、`.claude-plugin/marketplace.json`、`.cursor-plugin/marketplace.json`、`.github/plugin/marketplace.json` 和根 `marketplace.json`；插件清单依次识别 `.codex-plugin/plugin.json`、`.claude-plugin/plugin.json` 和根 `plugin.json`。
 - **技能生命周期**：已安装插件的有效技能默认启用；市场根 `skills/` 中未被插件引用的独立技能默认关闭，并可单独或按市场批量启用。
+- **工作区覆盖**：设置页可在全局默认和已注册工作区之间切换。工作区为插件、插件技能和独立技能保存稀疏的启用/禁用覆盖；缺少覆盖时继承全局配置。
 - **原地加载**：安装插件只保存安装状态，不复制市场文件。技能的 `resourceBase` 指向克隆后的技能目录，因此技能内的相对资源可用。
 - **Codex hooks（可选）**：从 Codex 插件清单发现 hooks 配置；只有已安装的插件才能启用它们。启用需要设置页的双重确认、配置指纹审批和可用的 `@deepseek-ai/dsh-hooks-codex` bridge。
 - **设置页**：设置菜单添加「技能与挂钩」区段，提供市场、插件、技能和 hooks 的管理及目录筛选。
@@ -32,7 +33,8 @@ dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex @deepseek-ai/dsh-hook-
 2. **安装插件**：市场清单的每项插件由 `source` 指向市场内的插件目录。字符串 `source` 和 `{"source":"local","path":"<仓库内路径>"}` 都可用；`./` 指向仓库根。`{"source":"url","url":"..."}` 仅在 URL 规范化后等于当前市场仓库时被视为仓库根插件，其他 URL 来源会标记为不支持。所有路径都必须解析在市场根目录内。
 3. **更新市场**：Host 启动时会依次对默认分支和分支引用执行 `git pull --ff-only`；失败只记录错误并继续其他市场。标签和 commit 是固定引用，手动或自动更新都会跳过。更新按钮复用相同逻辑。
 4. **管理技能**：安装插件后，其有效技能默认进入 DSH 技能目录，可逐项关闭。根 `skills/` 中未被插件引用的技能需要先显式启用，支持逐项或整组切换。
-5. **管理 hooks**：已安装且声明 Codex hooks 的插件初始未授权。bridge 可用时，第一次点击开关只显示确认，第二次点击才保存当前配置指纹并尝试挂载。授权状态和已挂载状态分别显示。
+5. **工作区覆盖**：在工作区列表的项目操作菜单中点击「配置插件与技能」打开该工作区的配置弹窗；设置页的「配置作用域」也可切换全局默认或工作区视图。选择工作区后，插件和技能使用三态菜单：继承全局、仅此工作区启用、在此工作区禁用。插件级禁用会屏蔽该插件的所有技能；重置覆盖立即恢复全局值。市场添加、更新和移除仍属于全局操作。
+6. **管理 hooks**：已安装且声明 Codex hooks 的插件初始未授权。bridge 可用时，第一次点击开关只显示确认，第二次点击才保存当前配置指纹并尝试挂载。授权状态和已挂载状态分别显示。hooks 和其审批在当前版本仍为全局配置。
 
 市场清单查找顺序如下：
 
@@ -115,6 +117,8 @@ whenToUse: 可选补充。
 - 生成的 bridge 配置：`<dsh-home>/agent-plugin-market/generated-hooks/`
 - 每个市场插件的 hooks 数据：`<dsh-home>/agent-plugin-market/hook-data/`
 
+每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。它只包含 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组布尔覆盖值；没有某个键时继承全局状态。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
+
 ## 卸载
 
 ```bash
@@ -143,9 +147,9 @@ git diff --check
 | 半端 | 文件 | 职责 |
 | --- | --- | --- |
 | Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与 loopback RPC。 |
-| Host runtime | `lib/market-runtime.js` | 管理运行时路径和配置持久化，解析市场/插件清单，扫描与读取技能。 |
-| Host service | `lib/market-service.js` | 执行市场 Git 生命周期、安装状态、技能开关、hooks 授权、状态视图和启动自动更新。 |
-| Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、技能开关和审批清理。 |
+| Host runtime | `lib/market-runtime.js` | 管理全局与工作区配置路径和持久化，解析市场/插件清单，按会话 cwd 扫描与读取有效技能。 |
+| Host service | `lib/market-service.js` | 执行市场 Git 生命周期、全局安装状态、工作区覆盖、技能开关、hooks 授权、状态视图和启动自动更新。 |
+| Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、全局技能开关与工作区覆盖解析。 |
 | Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
 | Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
