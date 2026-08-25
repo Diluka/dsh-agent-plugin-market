@@ -3,7 +3,7 @@
 ## Scope
 
 `dsh-agent-plugin-market` is a dual-face DSH plugin. It clones Git-backed
-markets, exposes installed skills to DSH, and registers authorized Codex hooks.
+markets, exposes enabled skills to DSH, and registers authorized Codex hooks.
 Treat the running DSH process and the browser UI as the integration target; this
 repository is not a standalone web application.
 
@@ -48,9 +48,11 @@ repository is not a standalone web application.
   `CLAUDE_PLUGIN_DATA`. Dispose hook Fibers when hooks are disabled, changed,
   updated, or removed.
 - Treat market content and hook configuration as untrusted input. Keep path
-  containment checks. When a market pull obtains a new commit, revoke that
-  market's approvals and restore only hooks that were actively mounted before
-  the pull against the new configuration.
+  containment checks. Bind approvals to verified hook configuration
+  fingerprints, not market pull outcomes. Market pulls suspend hook Fibers while
+  Git mutates the checkout; reconciliation remounts matching approved
+  fingerprints, disposes mismatches, and clears approvals when the current hook
+  configuration disappears or becomes unusable.
 - Use `@deepseek-ai/dsh-client-ui-primitives` before making a new UI control.
   The page uses `Button`, `Input`, `Pill`, `Menu`, `Tooltip`, and
   `DisclosureRow`. Use `--dsw-*` theme tokens for layout or any missing-control
@@ -97,8 +99,9 @@ The Node suite covers configuration, runtime scanning, hook helpers,
 reconciliation planning, and catalog-model behavior. For manual hook E2E
 verification, create a disposable local Git market fixture under ignored
 `test-repos/`, trigger a real DSH tool call, verify enabled delivery and disable
-disposal, then update the market to check restoration of a hook that was active
-before the pull. Remove the registered market and marker data after validation.
+disposal, then update the market to check that unchanged approved fingerprints
+remount and changed hook configurations require reapproval. Remove the
+registered market and marker data after validation.
 
 ## Required Skill Routing
 

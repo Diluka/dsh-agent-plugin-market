@@ -440,6 +440,72 @@ function serviceRuntime({ standaloneSkills }) {
   }
 }
 
+function updateServiceRuntime({ pullFails = false, after = 'after' } = {}) {
+  const config = {
+    markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
+    installed: {},
+    disabledSkills: {},
+    enabledStandaloneSkills: {},
+    hookApprovals: { 'market/plugin': { fingerprint: 'approved' } },
+  }
+  const commands = []
+  let revParseCount = 0
+  return {
+    config,
+    commands,
+    runtime: {
+      paths: { marketsDir: '/markets' },
+      async loadConfig() { return config },
+      async runProc(argv) {
+        commands.push(argv)
+        if (argv[3] === 'rev-parse') return (revParseCount++ === 0 ? 'before' : after) + '\n'
+        if (argv[3] === 'pull' && pullFails) throw new Error('pull failed')
+        return ''
+      },
+    },
+  }
+}
+
+test('updates markets without changing hook approvals directly', async () => {
+  const fixture = updateServiceRuntime()
+  const hookCalls = []
+  let invalidated = 0
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() { hookCalls.push('reconcile') },
+      suspendMarket(id) { hookCalls.push('suspend:' + id) },
+      resumeMarket(id) { hookCalls.push('resume:' + id) },
+    },
+    onSkillsChanged() { invalidated++ },
+  })
+
+  assert.deepEqual(await service.updateMarket({ marketId: 'market' }), { updated: true })
+
+  assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
+  assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
+  assert.equal(invalidated, 1)
+})
+
+test('keeps hook approvals when market pull fails', async () => {
+  const fixture = updateServiceRuntime({ pullFails: true })
+  const hookCalls = []
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() { hookCalls.push('reconcile') },
+      suspendMarket(id) { hookCalls.push('suspend:' + id) },
+      resumeMarket(id) { hookCalls.push('resume:' + id) },
+    },
+    onSkillsChanged() {},
+  })
+
+  await assert.rejects(() => service.updateMarket({ marketId: 'market' }), /pull failed/)
+
+  assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
+  assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
+})
+
 test('rejects a manifest-free repository without valid root skills', async () => {
   const fixture = serviceRuntime({ standaloneSkills: [] })
   const service = createMarketService({
