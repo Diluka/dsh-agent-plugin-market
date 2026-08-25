@@ -38,6 +38,7 @@
   },
   "files": [
     "lib",
+    "types",
     "cordis.patch.yml"
   ],
   "license": "MIT",
