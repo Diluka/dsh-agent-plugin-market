@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: 24
+  NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
   DSH_VERSION: 0.1.1-rc.2
   DSH_HOOKS_CODEX_VERSION: 0.1.1-rc.1
@@ -18,13 +18,13 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.0.10
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -46,13 +46,13 @@ jobs:
         optional-hooks: [absent, present]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.0.10
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
