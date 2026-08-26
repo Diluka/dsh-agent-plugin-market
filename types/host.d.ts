@@ -121,18 +121,62 @@ declare global {
     get(id: string): HostWorkspaceView | undefined
   }
 
+  interface HostToolOutputDefinition {
+    schema: Record<string, unknown>
+    render(args: unknown, value: unknown): { type: 'text', text: string }[]
+  }
+
+  interface HostToolCallView {
+    card: 'generic'
+    title: string
+    kind: 'read' | 'other'
+    rawInput?: string
+  }
+
+  interface HostToolDefinition {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+    output: HostToolOutputDefinition
+    execute(args: unknown, exec: HostToolRunContext): Promise<unknown> | unknown
+    isConcurrencySafe?(args: unknown): boolean
+    presentCall?(args: unknown): HostToolCallView | undefined
+  }
+
+  interface HostToolRegistry {
+    register(definition: HostToolDefinition): () => void
+    restrict(filter: { allow?: readonly string[], deny?: readonly string[] }): () => void
+  }
+
+  interface HostAgent {
+    session?: { header?: { cwd?: unknown } }
+    ctx?: Context & { tools?: HostToolRegistry }
+  }
+
+  interface HostToolRunContext {
+    agent?: HostAgent
+    signal?: AbortSignal
+  }
+
+  interface HostAgentsService {
+    list(): HostAgent[]
+  }
+
   interface HostContext extends Context {
     skills: HostSkillsService
     fs: HostFsService
     settings: HostSettingsService
     subprocess: HostSubprocessService
     connection: HostRpcConnection
+    tools: HostToolRegistry
+    get(name: 'agents'): HostAgentsService | undefined
     get(name: 'workspaceRegistry'): HostWorkspaceRegistry | undefined
   }
 
   type HostCodexBridge = Plugin<{ configPath: string }> | null
   type MarketRuntimeOptions = { fs: HostFsService, subprocess: HostSubprocessService, dshHome: string }
   type MarketRuntime = ReturnType<typeof import('../lib/market-runtime.js').createMarketRuntime>
+  type MarketService = ReturnType<typeof import('../lib/market-service.js').createMarketService>
   type CodexHookManager = ReturnType<typeof import('../lib/codex-hook-manager.js').createCodexHookManager>
 
   interface MarketServiceOptions {
