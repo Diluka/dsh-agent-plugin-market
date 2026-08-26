@@ -11,12 +11,14 @@ repository is not a standalone web application.
 
 - `lib/index.js`: Host composition root. Wires injected DSH services to the
   market runtime, market service, hook manager, skills provider, startup update,
-  and loopback RPC routes.
+  model tools, and loopback RPC routes.
 - `lib/market-runtime.js`: Host runtime for DSH-home paths, configuration I/O,
   Git command execution, market/plugin manifest parsing, and skill scanning.
 - `lib/market-service.js`: Host lifecycle service for market Git operations,
   plugin installation, skill state, hooks authorization, state views, and
   startup auto-update.
+- `lib/market-tools.js`: Host model tools for market state reads and workspace
+  plugin/skill override writes, with scoped restriction for home-path agents.
 - `lib/market-config.js`: Pure configuration state transitions for markets,
   installed plugins, skill switches, and related cleanup.
 - `lib/codex-hook-manager.js`: Codex hook inspection, approval reconciliation,

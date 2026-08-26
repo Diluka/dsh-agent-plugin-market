@@ -5,6 +5,7 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 - **市场与插件清单**：市场清单依次识别 `.agents/plugins/marketplace.json`、`.claude-plugin/marketplace.json`、`.cursor-plugin/marketplace.json`、`.github/plugin/marketplace.json` 和根 `marketplace.json`；插件清单依次识别 `.codex-plugin/plugin.json`、`.claude-plugin/plugin.json` 和根 `plugin.json`。
 - **技能生命周期**：已安装插件的有效技能默认启用；市场根 `skills/` 中未被插件引用的独立技能默认关闭，并可单独或按市场批量启用。
 - **工作区覆盖**：设置页可在全局默认和已注册工作区之间切换。工作区为插件、插件技能和独立技能保存稀疏的启用/禁用覆盖；缺少覆盖时继承全局配置。
+- **代理工具**：注册 `agent_market_info`、`agent_market_set_plugin` 和 `agent_market_set_skill`，让代理查看市场状态并只修改当前工作区覆盖。home 路径会话会被 scoped restriction 隐藏这些工具；若运行时未能隐藏，执行时也会拒绝。
 - **原地加载**：安装插件只保存安装状态，不复制市场文件。技能的 `resourceBase` 指向克隆后的技能目录，因此技能内的相对资源可用。
 - **Codex hooks（可选）**：从 Codex 插件清单发现 hooks 配置；只有已安装的插件才能启用它们。启用需要设置页的双重确认、配置指纹审批和可用的 `@deepseek-ai/dsh-hooks-codex` bridge。
 - **设置页**：设置菜单添加「技能与挂钩」区段，提供市场、插件、技能和 hooks 的管理及目录筛选。
@@ -17,7 +18,7 @@ dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 
 重启 DeepSeek Harness 后，在设置 -> 技能与挂钩中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
-`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 以 loopback authority 注册，客户端也会在非本机连接时拒绝显示市场操作，以保护本机 Git 操作和 hooks 执行。
+`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 以 loopback authority 注册，客户端也会在非本机连接时拒绝显示市场操作，以保护本机 Git 操作和 hooks 执行。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
 
 ### 启用 Codex hooks（可选）
 
@@ -35,6 +36,7 @@ dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex @deepseek-ai/dsh-hook-
 4. **管理技能**：安装插件后，其有效技能默认进入 DSH 技能目录，可逐项关闭。根 `skills/` 中未被插件引用的技能需要先显式启用，支持逐项或整组切换。
 5. **工作区覆盖**：在工作区列表的项目操作菜单中点击「配置插件与技能」打开该工作区的配置弹窗；设置页的「配置作用域」也可切换全局默认或工作区视图。选择工作区后，插件和技能使用三态菜单：继承全局、仅此工作区启用、在此工作区禁用。插件级禁用会屏蔽该插件的所有技能；重置覆盖立即恢复全局值。市场添加、更新和移除仍属于全局操作。
 6. **管理 hooks**：已安装且声明 Codex hooks 的插件初始未授权。bridge 可用时，第一次点击开关只显示确认，第二次点击才保存当前配置指纹并尝试挂载。授权状态和已挂载状态分别显示。hooks 和其审批在当前版本仍为全局配置。
+7. **代理工具**：代理可调用 `agent_market_info` 查看市场、插件、技能、hooks、工作区和当前作用域；可调用 `agent_market_set_plugin` 写入某个插件的工作区三态覆盖；可调用 `agent_market_set_skill` 写入某个技能的工作区三态覆盖。两个写入工具默认使用当前会话 `cwd` 匹配到的工作区，也接受 `workspace_id`；home 路径会话不可使用这些工具。参数和返回作用见 `docs/agent-tools.md`。
 
 市场清单查找顺序如下：
 
@@ -117,7 +119,7 @@ whenToUse: 可选补充。
 - 生成的 bridge 配置：`<dsh-home>/agent-plugin-market/generated-hooks/`
 - 每个市场插件的 hooks 数据：`<dsh-home>/agent-plugin-market/hook-data/`
 
-每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。运行时写入 `version: 1`，以及 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组稀疏布尔覆盖值；没有某个覆盖键时继承全局状态。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
+每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。运行时写入 `version: 1`，以及 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组稀疏布尔覆盖值；没有某个覆盖键时继承全局状态。设置页和代理写入工具都使用同一个工作区覆盖文件。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
 
 ## 卸载
 
@@ -149,6 +151,7 @@ git diff --check
 | Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与 loopback RPC。 |
 | Host runtime | `lib/market-runtime.js` | 管理全局与工作区配置路径和持久化，解析市场/插件清单，按会话 cwd 扫描与读取有效技能。 |
 | Host service | `lib/market-service.js` | 执行市场 Git 生命周期、全局安装状态、工作区覆盖、技能开关、hooks 授权、状态视图和启动自动更新。 |
+| Host tools | `lib/market-tools.js` | 注册代理可调用的市场状态读取和工作区插件/技能覆盖工具，并为 home 路径会话做 scoped restriction。 |
 | Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、全局技能开关与工作区覆盖解析。 |
 | Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
