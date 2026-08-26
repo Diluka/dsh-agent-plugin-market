@@ -403,7 +403,16 @@ test('writes existing workspace configs with replace-if-version intent', async (
   })
 })
 
-function serviceRuntime({ standaloneSkills }) {
+function standaloneSkill(skillName = 'standalone', description = 'Test standalone skill.') {
+  return {
+    skillName,
+    fullName: 'market/standalone-skills/' + skillName,
+    description,
+    whenToUse: null,
+  }
+}
+
+function serviceRuntime({ standaloneSkills = [] } = {}) {
   const config = { markets: [], installed: {}, disabledSkills: {}, enabledStandaloneSkills: {}, hookApprovals: {} }
   const workspaceConfigs = {}
   const commands = []
@@ -507,7 +516,7 @@ test('keeps hook approvals when market pull fails', async () => {
 })
 
 test('rejects a manifest-free repository without valid root skills', async () => {
-  const fixture = serviceRuntime({ standaloneSkills: [] })
+  const fixture = serviceRuntime()
   const service = createMarketService({
     runtime: fixture.runtime,
     hooks: { async reconcile() {} },
@@ -521,14 +530,7 @@ test('rejects a manifest-free repository without valid root skills', async () =>
 })
 
 test('adds a manifest-free repository when root skills are valid', async () => {
-  const fixture = serviceRuntime({
-    standaloneSkills: [{
-      skillName: 'standalone',
-      fullName: 'market/standalone-skills/standalone',
-      description: 'Test standalone skill.',
-      whenToUse: null,
-    }],
-  })
+  const fixture = serviceRuntime({ standaloneSkills: [standaloneSkill()] })
   let invalidated = 0
   const service = createMarketService({
     runtime: fixture.runtime,
@@ -545,14 +547,7 @@ test('adds a manifest-free repository when root skills are valid', async () => {
 })
 
 test('cleans a newly added market when setup fails after persistence', async () => {
-  const fixture = serviceRuntime({
-    standaloneSkills: [{
-      skillName: 'standalone',
-      fullName: 'market/standalone-skills/standalone',
-      description: 'Test standalone skill.',
-      whenToUse: null,
-    }],
-  })
+  const fixture = serviceRuntime({ standaloneSkills: [standaloneSkill()] })
   const service = createMarketService({
     runtime: fixture.runtime,
     hooks: { async reconcile() { throw new Error('hooks failed') } },
@@ -566,14 +561,7 @@ test('cleans a newly added market when setup fails after persistence', async () 
 })
 
 test('exposes standalone skills separately from plugin skills', async () => {
-  const fixture = serviceRuntime({
-    standaloneSkills: [{
-      skillName: 'standalone',
-      fullName: 'market/standalone-skills/standalone',
-      description: 'Test standalone skill.',
-      whenToUse: null,
-    }],
-  })
+  const fixture = serviceRuntime({ standaloneSkills: [standaloneSkill()] })
   fixture.config.markets.push({ id: 'market', name: 'market', repo: 'example/market' })
   const service = createMarketService({
     runtime: fixture.runtime,
@@ -596,10 +584,7 @@ test('exposes standalone skills separately from plugin skills', async () => {
 
 test('toggles all standalone skills for a market', async () => {
   const fixture = serviceRuntime({
-    standaloneSkills: [
-      { skillName: 'one', fullName: 'market/standalone-skills/one', description: 'One.', whenToUse: null },
-      { skillName: 'two', fullName: 'market/standalone-skills/two', description: 'Two.', whenToUse: null },
-    ],
+    standaloneSkills: [standaloneSkill('one', 'One.'), standaloneSkill('two', 'Two.')],
   })
   fixture.config.markets.push({ id: 'market', name: 'market', repo: 'example/market' })
   let invalidated = 0
@@ -622,7 +607,7 @@ test('toggles all standalone skills for a market', async () => {
 })
 
 test('toggles one standalone skill without changing plugin state', async () => {
-  const fixture = serviceRuntime({ standaloneSkills: [] })
+  const fixture = serviceRuntime()
   const service = createMarketService({
     runtime: fixture.runtime,
     hooks: { async reconcile() {} },
@@ -638,7 +623,7 @@ test('toggles one standalone skill without changing plugin state', async () => {
 })
 
 test('writes and clears workspace overrides without changing global defaults', async () => {
-  const fixture = serviceRuntime({ standaloneSkills: [] })
+  const fixture = serviceRuntime()
   const workspace = { id: 'workspace-a', title: 'Workspace A', path: '/workspace-a' }
   let invalidated = 0
   const service = createMarketService({
@@ -678,7 +663,7 @@ test('writes and clears workspace overrides without changing global defaults', a
 })
 
 test('hides home workspace entries from configurable workspace state', async () => {
-  const fixture = serviceRuntime({ standaloneSkills: [] })
+  const fixture = serviceRuntime()
   fixture.runtime.isHomeWorkspace = (workspacePath) => workspacePath === '/home/me'
   const home = { id: 'home', title: 'me', path: '/home/me' }
   const repo = { id: 'repo', title: 'repo', path: '/home/me/repo' }
