@@ -121,7 +121,7 @@ test('counts only the market state represented by the catalog', async () => {
 
   assert.deepEqual({ ...stats }, {
     installedPlugins: 2,
-    activeSkills: 3,
+    activeSkills: 4,
     activeHooks: 1,
     availablePlugins: 2,
     availableSkills: 5,

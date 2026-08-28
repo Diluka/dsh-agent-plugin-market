@@ -151,6 +151,28 @@ test('workspace override reset follows later global changes without mutating glo
   assert.equal(global.disabledSkills[fullName], true)
 })
 
+test('plugin skill workspace override wins over an uninstalled plugin base', () => {
+  const global = {
+    markets: [],
+    installed: {},
+    disabledSkills: { 'one/plugin/skill': false },
+    enabledStandaloneSkills: {},
+    hookApprovals: {},
+  }
+  const pluginKey = 'one/plugin'
+  const fullName = 'one/plugin/skill'
+  const inherited = emptyWorkspaceConfig()
+  const enabled = setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'enabled')
+  const disabled = setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'disabled')
+  const pluginDisabled = setWorkspacePluginOverride(setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'enabled'), pluginKey, 'disabled')
+
+  assert.equal(pluginEnabled(global, inherited, pluginKey), false)
+  assert.equal(pluginSkillEnabled(global, inherited, pluginKey, fullName), false)
+  assert.equal(pluginSkillEnabled(global, enabled, pluginKey, fullName), true)
+  assert.equal(pluginSkillEnabled(global, disabled, pluginKey, fullName), false)
+  assert.equal(pluginSkillEnabled(global, pluginDisabled, pluginKey, fullName), false)
+})
+
 test('workspace config parser keeps only known boolean overrides', () => {
   const parsed = normalizeWorkspaceConfig({
     version: 999,
