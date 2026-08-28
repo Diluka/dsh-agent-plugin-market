@@ -299,6 +299,74 @@ test('uses the current workspace config to override plugin and skill activation'
   ])
 })
 
+test('enables a plugin skill in a workspace even when the plugin base is not installed', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    '/dsh/agent-plugin-market/config.json': JSON.stringify({
+      markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
+      installed: {},
+      disabledSkills: {},
+      enabledStandaloneSkills: {},
+      hookApprovals: {},
+    }),
+    [marketDir + '/marketplace.json']: JSON.stringify({
+      plugins: [{ name: 'plugin', source: 'plugins/plugin' }],
+    }),
+    [marketDir + '/plugins/plugin/plugin.json']: JSON.stringify({ name: 'plugin' }),
+    [marketDir + '/plugins/plugin/skills/one/SKILL.md']: skillDoc('one'),
+    [marketDir + '/plugins/plugin/skills/two/SKILL.md']: skillDoc('two'),
+    '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify({
+      plugins: {},
+      pluginSkills: { 'market/plugin/one': true },
+      standaloneSkills: {},
+    }),
+  })
+
+  // plugin is not installed globally and has no workspace override (inherit); skill 'one' is override-enabled.
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), [
+    'market/plugin/one',
+  ])
+  // a workspace with no overrides inherits the disabled plugin base -> no plugin skills.
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-b' })).map((skill) => skill.fullName), [])
+})
+
+test('does not duplicate a plugin skill enabled both globally and in the workspace', async () => {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const runtime = runtimeFor({
+    '/dsh/agent-plugin-market/config.json': JSON.stringify({
+      markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
+      installed: { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } },
+      disabledSkills: {},
+      enabledStandaloneSkills: {},
+      hookApprovals: {},
+    }),
+    [marketDir + '/marketplace.json']: JSON.stringify({
+      plugins: [{ name: 'plugin', source: 'plugins/plugin' }],
+    }),
+    [marketDir + '/plugins/plugin/plugin.json']: JSON.stringify({ name: 'plugin' }),
+    [marketDir + '/plugins/plugin/skills/one/SKILL.md']: skillDoc('one'),
+    '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify({
+      plugins: {},
+      pluginSkills: { 'market/plugin/one': true },
+      standaloneSkills: {},
+    }),
+  })
+  const workspaces = {
+    list: () => [{ id: 'workspace-a', title: 'A', path: '/workspace-a' }],
+    get: () => ({ id: 'workspace-a', title: 'A', path: '/workspace-a' }),
+  }
+  const service = createMarketService({ runtime, hooks: { async reconcile() {} }, onSkillsChanged() {}, workspaces })
+
+  const state = await service.getState({ workspaceId: 'workspace-a' })
+  const market = state.markets[0]
+  const matches = market.plugins[0].skills.filter((skill) => skill.fullName === 'market/plugin/one')
+  assert.equal(matches.length, 1, 'a skill enabled both globally and in the workspace appears exactly once')
+  assert.equal(matches[0].enabled, true)
+  assert.equal(matches[0].globalEnabled, true)
+  assert.equal(matches[0].workspaceOverride, true)
+  assert.deepEqual(market.standaloneSkills.map((skill) => skill.fullName), [], 'the plugin skill must not be duplicated into the standalone group')
+})
+
 test('ignores a workspace config reached through a .dsh symlink', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
