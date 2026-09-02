@@ -9,6 +9,7 @@ import {
   pluginEnabled,
   pluginSkillEnabled,
   removeMarketFromConfig,
+  setMarketRefInConfig,
   setSkillEnabledInConfig,
   setStandaloneSkillsEnabledInConfig,
   setWorkspacePluginOverride,
@@ -74,6 +75,22 @@ test('removing a market clears only its related persisted state', () => {
   assert.deepEqual(next.enabledStandaloneSkills, { 'two/standalone-skills/skill': true })
   assert.deepEqual(next.hookApprovals, { 'two/plugin': { fingerprint: 'two' } })
   assert.deepEqual(original.markets, [{ id: 'one' }, { id: 'two' }])
+})
+
+test('updating a market ref keeps related persisted state and can reset to default', () => {
+  const original = configFixture()
+  original.markets[0] = { id: 'one', name: 'One', repo: 'example/one', refType: 'branch', ref: 'dev' }
+
+  const pinned = setMarketRefInConfig(original, { marketId: 'one', refType: 'tag', ref: 'v1.0.0', name: 'Renamed' })
+  const reset = setMarketRefInConfig(pinned, { marketId: 'one', refType: 'default' })
+
+  assert.deepEqual(original.markets[0], { id: 'one', name: 'One', repo: 'example/one', refType: 'branch', ref: 'dev' })
+  assert.deepEqual(pinned.markets[0], { id: 'one', name: 'Renamed', repo: 'example/one', refType: 'tag', ref: 'v1.0.0' })
+  assert.deepEqual(reset.markets[0], { id: 'one', name: 'Renamed', repo: 'example/one' })
+  assert.deepEqual(reset.installed, original.installed)
+  assert.deepEqual(reset.disabledSkills, original.disabledSkills)
+  assert.deepEqual(reset.enabledStandaloneSkills, original.enabledStandaloneSkills)
+  assert.deepEqual(reset.hookApprovals, original.hookApprovals)
 })
 
 test('uninstalling a plugin clears its approval and disabled skills only', () => {
