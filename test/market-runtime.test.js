@@ -543,6 +543,43 @@ function updateServiceRuntime({ pullFails = false, after = 'after' } = {}) {
   }
 }
 
+function refServiceRuntime({ marketplace = { name: 'Updated Market', description: '', plugins: [] }, standaloneSkills = [], existingDir = true } = {}) {
+  const config = {
+    markets: [{ id: 'market', name: 'market', repo: 'example/market', refType: 'tag', ref: 'old' }],
+    installed: { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } },
+    disabledSkills: { 'market/plugin/skill': true },
+    enabledStandaloneSkills: { 'market/standalone-skills/skill': true },
+    hookApprovals: { 'market/plugin': { fingerprint: 'approved' } },
+  }
+  const commands = []
+  return {
+    config,
+    commands,
+    runtime: {
+      paths: { marketsDir: '/markets' },
+      async ensureDir() {},
+      async loadConfig() { return config },
+      async saveConfig(next) {
+        for (const key of Object.keys(config)) delete config[key]
+        Object.assign(config, next)
+      },
+      async runProc(argv) {
+        commands.push(argv)
+        return ''
+      },
+      async parseMarketplace() {
+        return marketplace
+      },
+      async scanStandaloneSkills() {
+        return standaloneSkills
+      },
+      async resolveDirectoryWithin(parent, child) {
+        return existingDir && child === 'market' ? parent + '/' + child : null
+      },
+    },
+  }
+}
+
 test('updates markets without changing hook approvals directly', async () => {
   const fixture = updateServiceRuntime()
   const hookCalls = []
@@ -581,6 +618,99 @@ test('keeps hook approvals when market pull fails', async () => {
 
   assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
   assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
+})
+
+test('changes an existing market to a branch or tag checkout', async () => {
+  for (const target of [{ refType: 'branch', ref: 'release' }, { refType: 'tag', ref: 'v1.0.0' }]) {
+    const fixture = refServiceRuntime()
+    const hookCalls = []
+    let invalidated = 0
+    const service = createMarketService({
+      runtime: fixture.runtime,
+      hooks: {
+        async reconcile() { hookCalls.push('reconcile') },
+        suspendMarket(id) { hookCalls.push('suspend:' + id) },
+        resumeMarket(id) { hookCalls.push('resume:' + id) },
+      },
+      onSkillsChanged() { invalidated++ },
+    })
+
+    assert.deepEqual(await service.setMarketRef({ marketId: 'market', ...target }), { id: 'market', ...target })
+
+    const clone = fixture.commands.find((argv) => argv[0] === 'git' && argv[1] === 'clone')
+    assert.deepEqual(clone.slice(0, -1), ['git', 'clone', '--depth', '1', '--branch', target.ref, 'example/market'])
+    const moves = fixture.commands.filter((argv) => argv[0] === 'mv')
+    assert.equal(moves[0][1], 'market')
+    assert.match(moves[0][2], /^market\.backup-/)
+    assert.match(moves[1][1], /^market\.next-/)
+    assert.equal(moves[1][2], 'market')
+    assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: target.refType, ref: target.ref })
+    assert.deepEqual(fixture.config.installed, { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } })
+    assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
+    assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
+    assert.equal(invalidated, 1)
+  }
+})
+
+test('changes an existing market to a commit checkout', async () => {
+  const fixture = refServiceRuntime()
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() {},
+      suspendMarket() {},
+      resumeMarket() {},
+    },
+    onSkillsChanged() {},
+  })
+
+  await service.setMarketRef({ marketId: 'market', refType: 'commit', ref: 'abc1234' })
+
+  const clone = fixture.commands.find((argv) => argv[0] === 'git' && argv[1] === 'clone')
+  const checkout = fixture.commands.find((argv) => argv[0] === 'git' && argv[3] === 'checkout')
+  assert.deepEqual(clone.slice(0, -1), ['git', 'clone', 'example/market'])
+  assert.equal(checkout[4], 'abc1234')
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: 'commit', ref: 'abc1234' })
+})
+
+test('resets an existing market ref to the repository default', async () => {
+  const fixture = refServiceRuntime()
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() {},
+      suspendMarket() {},
+      resumeMarket() {},
+    },
+    onSkillsChanged() {},
+  })
+
+  assert.deepEqual(await service.setMarketRef({ marketId: 'market', refType: 'default', ref: 'ignored' }), { id: 'market', refType: 'default', ref: null })
+
+  const clone = fixture.commands.find((argv) => argv[0] === 'git' && argv[1] === 'clone')
+  assert.deepEqual(clone.slice(0, -1), ['git', 'clone', '--depth', '1', 'example/market'])
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market' })
+})
+
+test('keeps the old market ref when a replacement checkout is invalid', async () => {
+  const fixture = refServiceRuntime({ marketplace: null, standaloneSkills: [] })
+  const hookCalls = []
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() { hookCalls.push('reconcile') },
+      suspendMarket(id) { hookCalls.push('suspend:' + id) },
+      resumeMarket(id) { hookCalls.push('resume:' + id) },
+    },
+    onSkillsChanged() {},
+  })
+
+  await assert.rejects(() => service.setMarketRef({ marketId: 'market', refType: 'branch', ref: 'empty' }), /skills/)
+
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'market', repo: 'example/market', refType: 'tag', ref: 'old' })
+  assert.equal(fixture.commands.some((argv) => argv[0] === 'mv'), false)
+  assert.equal(fixture.commands.filter((argv) => argv[0] === 'rm').length >= 1, true)
+  assert.deepEqual(hookCalls, [])
 })
 
 test('rejects a manifest-free repository without valid root skills', async () => {
