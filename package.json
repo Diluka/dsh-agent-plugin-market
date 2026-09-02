@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-plugin-market",
-  "version": "0.5.1-dsh.0.1.1-rc.2",
+  "version": "0.6.0-dsh.0.1.1-rc.2",
   "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场，加载 Codex / Claude 技能，并以显式授权注册受支持的 Codex hooks。",
   "type": "module",
   "main": "lib/index.js",
