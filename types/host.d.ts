@@ -1,4 +1,5 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 
 declare global {
   type MarketRefType = 'branch' | 'tag' | 'commit'
@@ -92,11 +93,7 @@ declare global {
     prepareDocument(): Promise<string | undefined>
   }
 
-  interface HostRpcConnection {
-    rpc: {
-      handle(route: string, handler: (endpoint: string, payload: unknown) => Promise<unknown>, options: { authority: 'loopback' }): unknown
-    }
-  }
+  type HostRpcConnection = HostConnectionHandle
 
   interface HostSkillProviderControl {
     invalidate(): void

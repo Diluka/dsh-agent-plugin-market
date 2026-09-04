@@ -4,6 +4,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 
 const clientPath = new URL('../lib/client.js', import.meta.url)
+const packagePath = new URL('../package.json', import.meta.url)
 let clientPromise
 
 async function loadClient() {
@@ -36,6 +37,19 @@ async function loadClient() {
 async function loadCatalog() {
   return (await loadClient()).catalog
 }
+
+test('targets the split DSH 0.1.2 client providers', async () => {
+  const manifest = JSON.parse(await readFile(packagePath, 'utf8'))
+
+  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)
+  assert.deepEqual(manifest.dsh.client.inject, [
+    '@deepseek-ai/dsh-api-workspace-controller',
+    '@deepseek-ai/dsh-client-connection',
+    '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-renderer',
+    '@deepseek-ai/dsh-client-ui-settings-general',
+  ])
+})
 
 test('normalizes catalog text and requires every search term', async () => {
   const catalog = await loadCatalog()

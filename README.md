@@ -12,13 +12,15 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 ## 安装
 
+当前发布线直接面向 DSH `0.1.2-rc.1` 的拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。
+
 ```bash
 dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 ```
 
 重启 DeepSeek Harness 后，在设置 -> 技能与挂钩中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
-`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 以 loopback authority 注册，客户端也会在非本机连接时拒绝显示市场操作，以保护本机 Git 操作和 hooks 执行。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
+`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.1.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
 
 ### 启用 Codex hooks（可选）
 
@@ -149,7 +151,7 @@ git diff --check
 
 | 半端 | 文件 | 职责 |
 | --- | --- | --- |
-| Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与 loopback RPC。 |
+| Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与统一认证 RPC。 |
 | Host runtime | `lib/market-runtime.js` | 管理全局与工作区配置路径和持久化，解析市场/插件清单，按会话 cwd 扫描与读取有效技能。 |
 | Host service | `lib/market-service.js` | 执行市场 Git 生命周期、全局安装状态、工作区覆盖、技能开关、hooks 授权、状态视图和启动自动更新。 |
 | Host tools | `lib/market-tools.js` | 注册代理可调用的市场状态读取和工作区插件/技能覆盖工具，并为 home 路径会话做 scoped restriction。 |
