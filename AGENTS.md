@@ -11,7 +11,7 @@ repository is not a standalone web application.
 
 - `lib/index.js`: Host composition root. Wires injected DSH services to the
   market runtime, market service, hook manager, skills provider, startup update,
-  model tools, and loopback RPC routes.
+  model tools, and authenticated RPC routes.
 - `lib/market-runtime.js`: Host runtime for DSH-home paths, configuration I/O,
   Git command execution, market/plugin manifest parsing, and skill scanning.
 - `lib/market-service.js`: Host lifecycle service for market Git operations,

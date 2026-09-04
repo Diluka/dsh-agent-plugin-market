@@ -1,4 +1,5 @@
 import type * as React from 'react'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type * as UIPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
 
 declare global {
@@ -116,10 +117,6 @@ declare global {
     items?: Array<{ workspaceId?: unknown, title?: unknown, path?: unknown } | null | undefined>
   }
 
-  type ClientRpcResult =
-    | { ok: true, value: unknown }
-    | { ok: false, error: { message: string } }
-
   type ApiResult<T> =
     | { ok: true, data: T }
     | { ok: false, error?: string }
@@ -127,12 +124,7 @@ declare global {
   type ActionResult = ApiResult<{ skipped?: boolean, reason?: string }>
 
   interface ClientContext {
-    connection: {
-      isLoopback: boolean
-      rpc: {
-        call(route: string, name: string, args: object): Promise<ClientRpcResult>
-      }
-    }
+    connection: ConnectionHandle
     effect(effect: () => void | (() => void)): void
     slots: {
       inject(name: string, register: () => unknown): unknown

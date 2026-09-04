@@ -10,9 +10,9 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.1.1-rc.2
-  DSH_HOOKS_CODEX_VERSION: 0.1.1-rc.1
-  DSH_HOOK_PROTOCOL_VERSION: 0.1.1-rc.1
+  DSH_VERSION: 0.1.2-rc.1
+  DSH_HOOKS_CODEX_VERSION: 0.1.2-rc.1
+  DSH_HOOK_PROTOCOL_VERSION: 0.1.2-rc.1
 
 jobs:
   unit:
@@ -86,15 +86,25 @@ jobs:
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
 
+          redact_log() {
+            sed -n '1,240p' "$log" | sed -E 's/(token=)[^ )]+/\1<redacted>/g'
+          }
+
+          cookie_jar="$RUNNER_TEMP/dsh-web-$OPTIONAL_HOOKS.cookies"
+          auth_url=""
           for _ in $(seq 1 60); do
             if ! kill -0 "$pid" 2>/dev/null; then
               wait "$pid" || true
               echo "dsh exited before serving http://127.0.0.1:$port/"
-              sed -n '1,240p' "$log"
+              redact_log
               exit 1
             fi
 
-            if curl -fsS "http://127.0.0.1:$port/" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
+            if [ -z "$auth_url" ]; then
+              auth_url="$(sed -nE "s#^dsh web: (http://127[.]0[.]0[.]1:$port/[^ ]*).*#\\1#p" "$log" | tail -n 1)"
+            fi
+
+            if [ -n "$auth_url" ] && curl -fsSL -c "$cookie_jar" -b "$cookie_jar" "$auth_url" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
               kill -0 "$pid"
               exit 0
             fi
@@ -103,5 +113,5 @@ jobs:
           done
 
           echo "timed out waiting for http://127.0.0.1:$port/"
-          sed -n '1,240p' "$log"
+          redact_log
           exit 1
