@@ -43,6 +43,12 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
+- DSH development dependencies and CI target `0.1.5-rc.1`. The Host must
+  inject both `connection` and `webServer`. The bundle patch must also add
+  `webServer` to the `connection` provider row while retaining `webRuntime`:
+  Connection RPC getters retain the provider's shadow context. Test with
+  separate sibling Connection and WebServer provider Fibers; providing the
+  WebServer on the root Context hides this guard failure.
 - Preserve hook safety invariants: hooks are disabled by default, the UI uses
   double confirmation, approvals match the configuration fingerprint, hook
   configuration file paths remain inside the plugin root, and command hooks
