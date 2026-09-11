@@ -12,7 +12,7 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 ## 安装
 
-当前发布线直接面向 DSH `0.1.2-rc.1` 的拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。
+当前开发依赖和 CI 验证版本为 DSH `0.1.5-rc.1`，沿用拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webRuntime` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
 ```bash
 dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market

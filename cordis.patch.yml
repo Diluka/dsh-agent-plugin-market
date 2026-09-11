@@ -8,6 +8,12 @@
 # `dsh.client` declaration in package.json makes the browser half (exports
 # "./client", served at /plugins/dsh-agent-plugin-market/client.js) load in
 # the web GUI settings page.
+# Connection RPC getters retain the provider's shadow context in DSH 0.1.5.
+# Preserve the Web bundle's webRuntime dependency and add the HTTP carrier.
+- id: connection
+  name: '@deepseek-ai/dsh-client-connection'
+  inject: [webRuntime, webServer]
+
 - insert:
     - id: dsh-agent-plugin-market
       name: 'dsh-agent-plugin-market'
