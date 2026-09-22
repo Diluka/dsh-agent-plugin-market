@@ -11,12 +11,14 @@ repository is not a standalone web application.
 
 - `lib/index.js`: Host composition root. Wires injected DSH services to the
   market runtime, market service, hook manager, skills provider, startup update,
-  model tools, and authenticated RPC routes.
+  feature settings, model tools, tool guidance, and authenticated RPC routes.
 - `lib/market-runtime.js`: Host runtime for DSH-home paths, configuration I/O,
   Git command execution, market/plugin manifest parsing, and skill scanning.
 - `lib/market-service.js`: Host lifecycle service for market Git operations,
   plugin installation, skill state, hooks authorization, state views, and
   startup auto-update.
+- `lib/market-features.js`: Native DSH feature settings and optional tool/prompt
+  Fiber lifecycle; configuration namespace is `agent-plugin-market`.
 - `lib/market-tools.js`: Host model tools for market state reads and workspace
   plugin/skill override writes, with scoped restriction for home-path agents.
 - `lib/market-config.js`: Pure configuration state transitions for markets,
@@ -33,8 +35,9 @@ repository is not a standalone web application.
   use `require`, `React.createElement`, and no JSX, TypeScript, `import`, or
   bundler-only features.
 - `cordis.patch.yml`: Adds the package to the web profile composition.
-- `package.json`: `@deepseek-ai/dsh-client-ui-primitives` is a required peer
-  dependency. `@deepseek-ai/dsh-hooks-codex` is an optional peer; when absent,
+- `package.json`: `@deepseek-ai/dsh-client-ui-primitives` and
+  `@deepseek-ai/schemastery` are required peer dependencies.
+  `@deepseek-ai/dsh-hooks-codex` is an optional peer; when absent,
   the UI provides the runtime install command for it and
   `@deepseek-ai/dsh-hook-protocol`.
 
@@ -43,12 +46,18 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies and CI target `0.1.5-rc.1`. The Host must
+- DSH development dependencies and CI target `0.1.5-rc.2`. The Host must
   inject both `connection` and `webServer`. The bundle patch must also add
   `webServer` to the `connection` provider row while retaining `webRuntime`:
   Connection RPC getters retain the provider's shadow context. Test with
   separate sibling Connection and WebServer provider Fibers; providing the
   WebServer on the root Context hides this guard failure.
+- Expose tool and prompt switches in the native plugin configuration's
+  `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences
+  default to enabled; disabling tools also suppresses their guidance, and home
+  sessions receive neither tools nor guidance. Preserve skill loading, hooks,
+  and market RPC independently of these switches. Own registrations and
+  settings subscriptions through the plugin Fiber and test live toggle disposal.
 - Preserve hook safety invariants: hooks are disabled by default, the UI uses
   double confirmation, approvals match the configuration fingerprint, hook
   configuration file paths remain inside the plugin root, and command hooks
@@ -63,9 +72,11 @@ repository is not a standalone web application.
   configuration disappears or becomes unusable.
 - Use `@deepseek-ai/dsh-client-ui-primitives` before making a new UI control.
   The page uses `Button`, `Input`, `Pill`, `Menu`, `Tooltip`, and
-  `DisclosureRow`. Use `--dsw-*` theme tokens for layout or any missing-control
-  adapter; never add fixed light/dark colors. The hooks switch is a small native
-  button adapter.
+  `DisclosureRow`. The native plugin configuration card follows the built-in
+  PluginCard layout and theme tokens; a bare `DisclosureRow` is a catalog row,
+  not a plugin configuration card. Use `--dsw-*` theme tokens for layout or any
+  missing-control adapter; never add fixed light/dark colors. The hooks switch
+  is a small native button adapter.
 - Keep the settings section ID stable as `skills-and-hooks` unless the DSH
   settings integration is intentionally migrated. The visible label is
   `技能与挂钩`.

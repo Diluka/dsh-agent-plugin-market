@@ -1,4 +1,6 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-agent'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 
 declare global {
@@ -89,9 +91,9 @@ declare global {
     spawn(options: object): HostSubprocessHandle
   }
 
-  interface HostSettingsService {
-    prepareDocument(): Promise<string | undefined>
-  }
+  type MarketFeatureConfig = { tools: boolean, systemPrompt: boolean }
+
+  type HostSettingsService = Pick<import('@deepseek-ai/dsh-settings').SettingsProvider, 'prepareDocument' | 'register'>
 
   type HostRpcConnection = HostConnectionHandle
 

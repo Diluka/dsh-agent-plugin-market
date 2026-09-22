@@ -5,14 +5,14 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 - **市场与插件清单**：市场清单依次识别 `.agents/plugins/marketplace.json`、`.claude-plugin/marketplace.json`、`.cursor-plugin/marketplace.json`、`.github/plugin/marketplace.json` 和根 `marketplace.json`；插件清单依次识别 `.codex-plugin/plugin.json`、`.claude-plugin/plugin.json` 和根 `plugin.json`。
 - **技能生命周期**：已安装插件的有效技能默认启用；市场根 `skills/` 中未被插件引用的独立技能默认关闭，并可单独或按市场批量启用。
 - **工作区覆盖**：设置页可在全局默认和已注册工作区之间切换。工作区为插件、插件技能和独立技能保存稀疏的启用/禁用覆盖；缺少覆盖时继承全局配置。
-- **代理工具**：注册 `agent_market_info`、`agent_market_set_plugin` 和 `agent_market_set_skill`，让代理查看市场状态并只修改当前工作区覆盖。home 路径会话会被 scoped restriction 隐藏这些工具；若运行时未能隐藏，执行时也会拒绝。
+- **代理工具**：通过插件配置的「功能」开关控制 `agent_market_info`、`agent_market_set_plugin` 和 `agent_market_set_skill`，让代理查看市场状态并只修改工作区覆盖；支持注入简短工具用法提示词。工具关闭时也停止注入提示词，具体配置见 [代理市场工具](docs/agent-tools.md)。home 路径会话会被 scoped restriction 隐藏这些工具；若运行时未能隐藏，执行时也会拒绝。
 - **原地加载**：安装插件只保存安装状态，不复制市场文件。技能的 `resourceBase` 指向克隆后的技能目录，因此技能内的相对资源可用。
 - **Codex hooks（可选）**：从 Codex 插件清单发现 hooks 配置；只有已安装的插件才能启用它们。启用需要设置页的双重确认、配置指纹审批和可用的 `@deepseek-ai/dsh-hooks-codex` bridge。
 - **设置页**：设置菜单添加「技能与挂钩」区段，提供市场、插件、技能和 hooks 的管理及目录筛选。
 
 ## 安装
 
-当前开发依赖和 CI 验证版本为 DSH `0.1.5-rc.1`，沿用拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webRuntime` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
+当前开发依赖和 CI 验证版本为 DSH `0.1.5-rc.2`，沿用拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webRuntime` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
 ```bash
 dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
@@ -20,7 +20,7 @@ dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
 
 重启 DeepSeek Harness 后，在设置 -> 技能与挂钩中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
-`@deepseek-ai/dsh-client-ui-primitives` 是运行时 peer dependency，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.1.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
+`@deepseek-ai/dsh-client-ui-primitives` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.1.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
 
 ### 启用 Codex hooks（可选）
 
@@ -154,12 +154,13 @@ git diff --check
 | Host composition root | `lib/index.js` | 注入 DSH 服务，加载可选 bridge，创建 runtime、service 和 hook manager，注册技能 provider 与统一认证 RPC。 |
 | Host runtime | `lib/market-runtime.js` | 管理全局与工作区配置路径和持久化，解析市场/插件清单，按会话 cwd 扫描与读取有效技能。 |
 | Host service | `lib/market-service.js` | 执行市场 Git 生命周期、全局安装状态、工作区覆盖、技能开关、hooks 授权、状态视图和启动自动更新。 |
-| Host tools | `lib/market-tools.js` | 注册代理可调用的市场状态读取和工作区插件/技能覆盖工具，并为 home 路径会话做 scoped restriction。 |
+| Host features | `lib/market-features.js` | 注册 DSH 功能设置，按开关管理工具和简短系统提示词的生命周期。 |
+| Host tools | `lib/market-tools.js` | 定义市场状态读取、工作区插件/技能覆盖工具及其用法提示，并为 home 路径会话做 scoped restriction。 |
 | Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、全局技能开关与工作区覆盖解析。 |
 | Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
 | Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
-| Client | `lib/client.js` | 浏览器入口，注册「技能与挂钩」设置页和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
+| Client | `lib/client.js` | 浏览器入口，注册插件「功能」配置、「技能与挂钩」设置页和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
 | Profile composition | `cordis.patch.yml` | 将双端插件包插入 web profile。 |
 
 Hook 元数据按协议键存入 `hookConfigs`；当前实现只挂载 `codex` 适配器。
