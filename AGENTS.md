@@ -55,6 +55,8 @@ repository is not a standalone web application.
 - Keep CI smoke installs on one DSH release cohort with `.github/pin-dsh.cjs`
   and a fresh step-local pnpm cache. Apply the hook to both `dlx` and profile
   child installs; a pinned CLI alone leaves its caret dependencies floating.
+  Revalidate the hook's explicit Cordis/framework companion baseline when
+  upgrading DSH; newer Loader/HMR APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
   `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences
   default to enabled; disabling tools also suppresses their guidance, and home
