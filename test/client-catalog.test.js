@@ -27,7 +27,7 @@ async function loadClient() {
         throw new Error('unexpected external require: ' + id)
       })
       assert.equal(typeof client.apply, 'function')
-      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces'])
+      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces', 'settingsScope'])
       return client
     })()
   }
@@ -48,6 +48,8 @@ test('targets the split DSH 0.1.2 client providers', async () => {
     '@deepseek-ai/dsh-client-ui-layout',
     '@deepseek-ai/dsh-client-ui-renderer',
     '@deepseek-ai/dsh-client-ui-settings-general',
+    '@deepseek-ai/dsh-client-ui-settings',
+    '@deepseek-ai/dsh-client-ui-settings-plugins',
   ])
 })
 
