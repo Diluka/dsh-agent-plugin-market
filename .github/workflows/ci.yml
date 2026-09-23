@@ -73,6 +73,10 @@ jobs:
           set -euo pipefail
 
           export DSH_HOME="$RUNNER_TEMP/dsh-home-$OPTIONAL_HOOKS"
+          # Pin the complete DSH release cohort in both dlx and the profile's
+          # child pnpm installs; a CLI version alone still permits newer RCs.
+          export npm_config_global_pnpmfile="$GITHUB_WORKSPACE/.github/pin-dsh.cjs"
+          export npm_config_cache_dir="$RUNNER_TEMP/dsh-smoke-cache-$OPTIONAL_HOOKS"
           dsh() { pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" "$@"; }
 
           dsh plugin --profile web add "$PLUGIN_TARBALL"

@@ -146,6 +146,7 @@ git diff --check
 - `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
 - `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
 - `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
+- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 和 profile 安装中的 DSH 传递依赖统一到 `DSH_VERSION`，并使用独立缓存，避免上游 caret 范围选中新发布的其他 RC。该 hook 仅在 smoke 安装步骤启用。
 
 ## 架构
 
