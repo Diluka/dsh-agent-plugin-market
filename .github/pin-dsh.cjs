@@ -1,17 +1,16 @@
-// CI-only release-cohort pinning. DSH's published caret dependencies may
-// otherwise select a newer (or only partially published) prerelease.
-// Verified companions for DSH rc.2: newer loader/HMR releases changed the
-// awaited activation and registerConfig contracts consumed by rc.2 app-boot.
+// CI-only release-cohort pinning. DSH prerelease packages use caret ranges
+// that can resolve framework companions newer than the tested bundle expects.
+// DSH 0.1.7-rc.1 targets Cordis 4.0.4, Loader 1.0.5, and Include 1.0.9.
 // Revalidate this baseline together with DSH_VERSION when upgrading CI.
 const frameworkVersions = {
-  '@deepseek-ai/cordis': '4.0.2',
-  '@deepseek-ai/cordis-plugin-group': '1.0.2',
-  '@deepseek-ai/cordis-plugin-hmr': '1.0.17',
-  '@deepseek-ai/cordis-plugin-include': '1.0.7',
-  '@deepseek-ai/cordis-plugin-loader': '1.0.3',
-  '@deepseek-ai/cordis-plugin-timer': '1.1.4',
-  '@deepseek-ai/cosmokit': '1.8.3',
-  '@deepseek-ai/schemastery': '3.18.2',
+  '@deepseek-ai/cordis': '4.0.4',
+  '@deepseek-ai/cordis-plugin-group': '1.0.4',
+  '@deepseek-ai/cordis-plugin-hmr': '1.0.19',
+  '@deepseek-ai/cordis-plugin-include': '1.0.9',
+  '@deepseek-ai/cordis-plugin-loader': '1.0.5',
+  '@deepseek-ai/cordis-plugin-timer': '1.1.6',
+  '@deepseek-ai/cosmokit': '1.8.5',
+  '@deepseek-ai/schemastery': '3.18.4',
 }
 
 module.exports = {

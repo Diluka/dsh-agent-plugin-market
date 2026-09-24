@@ -12,22 +12,18 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 ## 安装
 
-当前开发依赖和 CI 验证版本为 DSH `0.1.5-rc.2`，沿用拆分 Client 服务和统一连接认证契约，不兼容 DSH `0.1.1`。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webRuntime` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
+当前开发依赖和 CI 验证版本为 DSH `0.1.7-rc.1`（npm `next` 发布线；当前运行时基线）。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webRuntime` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
-```bash
-dsh plugin --profile web add github:Diluka/dsh-agent-plugin-market
-```
+在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后在设置页「技能与挂钩」中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
-重启 DeepSeek Harness 后，在设置 -> 技能与挂钩中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
-
-`@deepseek-ai/dsh-client-ui-primitives` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH profile 提供。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示当前运行时的安装命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.1.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
+`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-home-paths` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH profile 提供。工具与提示词开关保存在 profile entry 的 volatile Config fields 中，通过 DSH Config Forms 即时编辑，并以内联方式显示在插件 bundle 详情页。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示通过 profile 依赖安装所需包的命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.1.7-rc.1` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
 
 ### 启用 Codex hooks（可选）
 
-需要执行已授权的 Codex hooks 时，按设置页提供的命令在同一 profile 中安装 bridge 及其运行时所需协议包，再重启 DSH：
+需要执行已授权的 Codex hooks 时，在运行于目标 profile 的 DSH shell 中执行以下命令，再重启 DSH。bridge 是可选的运行时依赖，不是可从侧边栏「插件」独立安装的 bundle：
 
 ```bash
-dsh plugin --profile web add @deepseek-ai/dsh-hooks-codex @deepseek-ai/dsh-hook-protocol
+pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.1.7-rc.1 @deepseek-ai/dsh-hook-protocol@0.1.7-rc.1
 ```
 
 ## 使用
@@ -115,7 +111,7 @@ whenToUse: 可选补充。
 
 ## 运行时存储
 
-运行时基目录是文件型 DSH settings document 的父目录加上 `agent-plugin-market`。以下以 `<dsh-home>` 表示该父目录：
+运行时基目录是 `@deepseek-ai/dsh-home-paths` 根据 `$DSH_HOME` 或默认 `~/.dsh` 解析的 DSH home，再追加 `agent-plugin-market`。以下以 `<dsh-home>` 表示该解析结果：
 
 - 市场、插件、技能开关和 hooks 审批：`<dsh-home>/agent-plugin-market/config.json`
 - 市场克隆目录：`<dsh-home>/agent-plugin-market/markets/<id>/`
@@ -126,11 +122,7 @@ whenToUse: 可选补充。
 
 ## 卸载
 
-```bash
-dsh plugin --profile web rm dsh-agent-plugin-market
-```
-
-如果 profile 的 `cordis.patch.yml` 仍保留该包的插入条目，请移除整个 `dsh-agent-plugin-market` 插入条目后重启 DSH。
+在 DSH Web 侧边栏「插件」中卸载 `dsh-agent-plugin-market` bundle。如果 profile 的自定义 `cordis.patch.yml` 仍保留该包的插入条目，请移除该条目后重启 DSH。
 
 ## 开发与验证
 
@@ -146,7 +138,7 @@ git diff --check
 - `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
 - `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
 - `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
-- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 和 profile 安装中的 DSH 传递依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存，避免上游 caret 范围选中新 RC 或不兼容的 Loader/HMR。该 hook 仅在 smoke 安装步骤启用；升级 CI 目标版本时需一并核验配套版本。
+- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 传递依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。Smoke job 按当前 DSH CLI 通过 pnpm 准备临时 profile 并应用包内的 Cordis patch；升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
 
 ## 架构
 

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
 
-async function featureCard(snapshot, expanded = true) {
+async function featureCard(snapshot, view = 'page') {
   let registration
   let stateIndex = 0
   const state = []
@@ -11,13 +11,11 @@ async function featureCard(snapshot, expanded = true) {
   let css = ''
   const slots = new Map()
   const writes = []
-  class ReceiverBoundScope {
-    constructor() { this.snapshot = snapshot; this.writes = writes }
-    getSnapshot() { return this.snapshot }
-    subscribe() { assert.equal(this.snapshot, snapshot); return () => {} }
-    async set(field, value) { this.writes.push([field, value]) }
+  const form = {
+    getSnapshot() { return snapshot },
+    subscribe() { return () => {} },
+    async set(field, value) { writes.push([field, value]); return true },
   }
-  const scope = new ReceiverBoundScope()
   const React = {
     createElement(type, props, ...children) { return { type, props: props || {}, children } },
     useCallback: (callback) => callback,
@@ -28,7 +26,7 @@ async function featureCard(snapshot, expanded = true) {
       return [state[index], (next) => { state[index] = next }]
     },
   }
-  const primitives = { Switch: 'Switch', IconChevronDownOutline14: 'IconChevronDownOutline14' }
+  const primitives = { Switch: 'Switch', IconChevronDownOutlineMedium: 'IconChevronDownOutlineMedium' }
   vm.runInNewContext(await readFile(new URL('../lib/client.js', import.meta.url), 'utf8'), {
     window: { __ModuleLoader__: { load(value) { registration = value } } },
     document: {
@@ -38,7 +36,7 @@ async function featureCard(snapshot, expanded = true) {
   })
   const client = registration.factory((id) => id === 'react' ? React : primitives)
   client.apply({
-    settingsScope: { bind(spec) { assert.equal(spec.namespace, 'agent-plugin-market'); return scope } },
+    configForms: { get(entryId) { assert.equal(entryId, 'dsh-agent-plugin-market'); return form } },
     // Install the actual stylesheet but leave unrelated workspace observers idle.
     effect(install) { if (effectIndex++ === 0) install() },
     slots: {
@@ -46,17 +44,12 @@ async function featureCard(snapshot, expanded = true) {
       register(options, render) { slots.set(options.name, { options, render }) },
     },
   })
-  const card = slots.get('settings.plugin.item')
-  assert.equal(card.options.key, 'agent-plugin-market')
+  const card = slots.get('plugins.bundle.config')
+  assert.equal(card.options.key, 'dsh-agent-plugin-market')
   assert.equal(slots.get('settings.section').options.id, 'skills-and-hooks')
-  const element = card.render()
+  const element = card.render({ view })
   function render() { stateIndex = 0; return element.type(element.props) }
-  let tree = render()
-  if (expanded && tree) {
-    nodes(tree, 'button')[0].props.onClick()
-    tree = render()
-  }
-  return { tree, writes, render, css }
+  return { tree: render(), writes, render, css }
 }
 
 function nodes(tree, type) {
@@ -64,32 +57,37 @@ function nodes(tree, type) {
   return [...(tree.type === type ? [tree] : []), ...tree.children.flatMap((child) => nodes(child, type))]
 }
 
-test('plugin card matches the native stacked header and discloses its bordered body', async () => {
-  const { tree, render, css } = await featureCard({ status: 'ready', writable: true, value: { tools: true, systemPrompt: true } }, false)
-  assert.equal(tree.props.className, 'apm-feature-card')
+test('plugin bundle configuration is inline, visible by default, and collapsible', async () => {
+  const { tree, render, css } = await featureCard({ status: 'ready', writable: true, value: { tools: true, systemPrompt: true } })
+  assert.equal(tree.props.className, 'apm-feature-card open')
   const header = nodes(tree, 'button')[0]
   assert.equal(header.props.type, 'button')
-  assert.equal(header.props['aria-expanded'], false)
+  assert.equal(header.props['aria-expanded'], true)
   assert.equal(header.props.className, 'apm-feature-header')
   assert.equal(header.children[0].props.className, 'apm-feature-head-text')
   assert.deepEqual(header.children[0].children.map((child) => child.children[0]), ['Agent 插件市场', '配置市场工具及其系统提示词。'])
-  assert.equal(header.children[1].type, 'IconChevronDownOutline14')
-  assert.equal(nodes(tree, 'Switch').length, 0)
+  assert.equal(header.children[1].type, 'IconChevronDownOutlineMedium')
+  assert.equal(nodes(tree, 'Switch').length, 2)
   assert.match(css, /\.apm-feature-card\{[^}]*border-radius:16px/)
   assert.match(css, /\.apm-feature-card\{[^}]*var\(--dsw-alias-bg-layer-3\)/)
   assert.match(css, /\.apm-feature-header\{[^}]*padding:14px 16px/)
   assert.match(css, /\.apm-feature-name\{[^}]*font-size:15px;font-weight:600/)
   assert.match(css, /\.apm-feature-body\{[^}]*border-top:\.5px solid var\(--dsw-alias-border-l2\)/)
   header.props.onClick()
-  const open = render()
-  assert.equal(open.props.className, 'apm-feature-card open')
-  assert.equal(nodes(open, 'Switch').length, 2)
-  assert.ok(nodes(open, 'div').some((node) => node.props.className === 'apm-feature-body'))
-  nodes(open, 'button')[0].props.onClick()
-  assert.equal(nodes(render(), 'Switch').length, 0)
+  const closed = render()
+  assert.equal(closed.props.className, 'apm-feature-card')
+  assert.equal(nodes(closed, 'Switch').length, 0)
+  nodes(closed, 'button')[0].props.onClick()
+  assert.equal(nodes(render(), 'Switch').length, 2)
 })
 
-test('native plugin card exposes feature switches through the settings namespace', async () => {
+test('plugin bundle summary is concise', async () => {
+  const { tree } = await featureCard({ status: 'unavailable' }, 'summary')
+  assert.equal(tree.type, 'span')
+  assert.equal(tree.children[0], '配置市场工具及其系统提示词。')
+})
+
+test('plugin bundle configuration form exposes the feature switches', async () => {
   const { tree, writes } = await featureCard({ status: 'ready', writable: true, value: { tools: true, systemPrompt: true } })
   assert.equal(nodes(tree, 'button')[0].props['aria-label'], '收起：Agent 插件市场')
   assert.equal(tree.props.className, 'apm-feature-card open')
