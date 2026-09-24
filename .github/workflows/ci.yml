@@ -10,9 +10,9 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.1.5-rc.2
-  DSH_HOOKS_CODEX_VERSION: 0.1.5-rc.2
-  DSH_HOOK_PROTOCOL_VERSION: 0.1.5-rc.2
+  DSH_VERSION: 0.1.7-rc.1
+  DSH_HOOKS_CODEX_VERSION: 0.1.7-rc.1
+  DSH_HOOK_PROTOCOL_VERSION: 0.1.7-rc.1
 
 jobs:
   unit:
@@ -79,14 +79,30 @@ jobs:
           export npm_config_cache_dir="$RUNNER_TEMP/dsh-smoke-cache-$OPTIONAL_HOOKS"
           dsh() { pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" "$@"; }
 
-          dsh plugin --profile web add "$PLUGIN_TARBALL"
+          profile="$DSH_HOME/profiles/web"
+          mkdir -p "$profile"
+          hooks_bundle=''
+          packages=("$PLUGIN_TARBALL")
           if [ "$OPTIONAL_HOOKS" = present ]; then
-            dsh plugin --profile web add "@deepseek-ai/dsh-hooks-codex@$DSH_HOOKS_CODEX_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_HOOK_PROTOCOL_VERSION"
+            hooks_bundle=', "@deepseek-ai/dsh-hooks-codex"'
+            packages+=("@deepseek-ai/dsh-hooks-codex@$DSH_HOOKS_CODEX_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_HOOK_PROTOCOL_VERSION")
           fi
+          cat > "$profile/package.json" <<EOF
+          {
+            "name": "dsh-profile-web",
+            "private": true,
+            "dsh": {
+              "profile": {
+                "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-agent-plugin-market"$hooks_bundle]
+              }
+            }
+          }
+          EOF
+          pnpm --dir "$profile" add "${packages[@]}"
 
           port=3080
           log="$RUNNER_TEMP/dsh-web-$OPTIONAL_HOOKS.log"
-          DSH_TELEMETRY_MODE=DISABLED DSH_PERMISSION_MODE=danger-full-access dsh web --host 127.0.0.1 --port "$port" --no-open >"$log" 2>&1 &
+          DSH_TELEMETRY_MODE=DISABLED DSH_PERMISSION_MODE=danger-full-access dsh --profile web --host 127.0.0.1 --port "$port" --no-open >"$log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
 

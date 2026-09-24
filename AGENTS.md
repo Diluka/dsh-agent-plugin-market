@@ -18,7 +18,7 @@ repository is not a standalone web application.
   plugin installation, skill state, hooks authorization, state views, and
   startup auto-update.
 - `lib/market-features.js`: Native DSH feature settings and optional tool/prompt
-  Fiber lifecycle; configuration namespace is `agent-plugin-market`.
+  Fiber lifecycle; the live Config form is the `dsh-agent-plugin-market` profile entry.
 - `lib/market-tools.js`: Host model tools for market state reads and workspace
   plugin/skill override writes, with scoped restriction for home-path agents.
 - `lib/market-config.js`: Pure configuration state transitions for markets,
@@ -35,10 +35,10 @@ repository is not a standalone web application.
   use `require`, `React.createElement`, and no JSX, TypeScript, `import`, or
   bundler-only features.
 - `cordis.patch.yml`: Adds the package to the web profile composition.
-- `package.json`: `@deepseek-ai/dsh-client-ui-primitives` and
-  `@deepseek-ai/schemastery` are required peer dependencies.
-  `@deepseek-ai/dsh-hooks-codex` is an optional peer; when absent,
-  the UI provides the runtime install command for it and
+- `package.json`: `@deepseek-ai/dsh-client-ui-primitives`,
+  `@deepseek-ai/dsh-home-paths`, and `@deepseek-ai/schemastery` are required
+  peer dependencies. `@deepseek-ai/dsh-hooks-codex` is an optional peer; when
+  absent, the UI shows the current-target profile `pnpm add` command for it and
   `@deepseek-ai/dsh-hook-protocol`.
 
 ## Development Rules
@@ -46,17 +46,18 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies and CI target `0.1.5-rc.2`. The Host must
-  inject both `connection` and `webServer`. The bundle patch must also add
-  `webServer` to the `connection` provider row while retaining `webRuntime`:
-  Connection RPC getters retain the provider's shadow context. Test with
-  separate sibling Connection and WebServer provider Fibers; providing the
-  WebServer on the root Context hides this guard failure.
+- DSH development dependencies and CI target the active runtime `0.1.7-rc.1`
+  (`next` prerelease); the npm `latest` dist-tag is a separate older cohort.
+  The Host must inject both `connection` and `webServer`. The bundle patch must
+  also add `webServer` to the `connection` provider row while retaining
+  `webRuntime`: Connection RPC getters retain the provider's shadow context.
+  Test with separate sibling Connection and WebServer provider Fibers; providing
+  the WebServer on the root Context hides this guard failure.
 - Keep CI smoke installs on one DSH release cohort with `.github/pin-dsh.cjs`
   and a fresh step-local pnpm cache. Apply the hook to both `dlx` and profile
   child installs; a pinned CLI alone leaves its caret dependencies floating.
-  Revalidate the hook's explicit Cordis/framework companion baseline when
-  upgrading DSH; newer Loader/HMR APIs can break older app-boot consumers.
+  Revalidate the Cordis 4.0.4 / Loader 1.0.5 / Include 1.0.9 companion baseline
+  when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
   `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences
   default to enabled; disabling tools also suppresses their guidance, and home

@@ -27,7 +27,7 @@ async function loadClient() {
         throw new Error('unexpected external require: ' + id)
       })
       assert.equal(typeof client.apply, 'function')
-      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces', 'settingsScope'])
+      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces', 'configForms'])
       return client
     })()
   }
@@ -38,7 +38,7 @@ async function loadCatalog() {
   return (await loadClient()).catalog
 }
 
-test('targets the split DSH 0.1.2 client providers', async () => {
+test('targets DSH 0.1.7 client providers and config forms', async () => {
   const manifest = JSON.parse(await readFile(packagePath, 'utf8'))
 
   assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)

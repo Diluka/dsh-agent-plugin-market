@@ -3,16 +3,11 @@ import test from 'node:test'
 
 import { Context, Service, resolveConfig } from '@deepseek-ai/cordis'
 import { HostConnectionService } from '@deepseek-ai/dsh-client-connection'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { SystemPrompt, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { SETTINGS_NAMESPACE, PROMPT_SECTION } from '../lib/market-features.js'
+import { SETTINGS_ENTRY_ID, PROMPT_SECTION } from '../lib/market-features.js'
 
-class MemorySettings extends SettingsProvider {
-  writable = true
-  async load() { return {} }
-  async persist() {}
-  async prepareDocument() { return '/fixture/.dsh/settings.yml' }
-}
+// Keep plugin filesystem operations inside the in-memory fixture's path space.
+process.env.DSH_HOME = '/fixture/.dsh'
 
 class FixtureTools extends Service {
   constructor(ctx, tools) {
@@ -40,7 +35,13 @@ async function hostFixture({ connectionInject = ['webServer'] } = {}) {
     async resolve(displayPath) { return { displayPath, targetKey: displayPath } },
     async stat() { return null },
   })
-  await ctx.plugin(MemorySettings).await()
+  const settingsPolicies = new Map()
+  ctx.provide('settings', {
+    configure(presentation, owner) {
+      settingsPolicies.set(owner, presentation)
+      return () => settingsPolicies.delete(owner)
+    },
+  })
   await ctx.plugin(SystemPrompt, { includeHarnessIdentity: false }).await()
   ctx.provide('subprocess', {
     spawn({ argv }) {
@@ -71,7 +72,7 @@ async function hostFixture({ connectionInject = ['webServer'] } = {}) {
       return () => routes.delete(route.path)
     },
   }
-  return { ctx, routes, webServer, connectionFiber, tools, skillProviders }
+  return { ctx, routes, webServer, connectionFiber, tools, skillProviders, settingsPolicies }
 }
 
 test('Host registers its Connection RPC channel and removes it on disposal', async (t) => {
@@ -115,13 +116,17 @@ test('market injection alone cannot satisfy the Connection provider shadow guard
   await assert.rejects(fiber.await(), /cannot get property "webServer" without inject/)
 })
 
-test('feature Config validates booleans and preserves enabled defaults', () => {
-  assert.deepEqual(resolveConfig(marketPlugin, {}), { tools: true, systemPrompt: true })
-  assert.deepEqual(resolveConfig(marketPlugin, { tools: false }), { tools: false, systemPrompt: true })
+test('feature Config validates volatile booleans and preserves enabled defaults', () => {
+  const defaults = resolveConfig(marketPlugin, {})
+  assert.deepEqual({ tools: defaults.tools.get(), systemPrompt: defaults.systemPrompt.get() }, { tools: true, systemPrompt: true })
+  const disabledTools = resolveConfig(marketPlugin, { tools: false })
+  assert.deepEqual({ tools: disabledTools.tools.get(), systemPrompt: disabledTools.systemPrompt.get() }, { tools: false, systemPrompt: true })
   assert.throws(() => resolveConfig(marketPlugin, { tools: 'false' }))
   const schema = marketPlugin.Config.toJSON()
   const root = schema.refs[schema.uid]
   assert.equal(root.meta.description, '功能')
+  assert.equal(schema.refs[root.dict.tools].meta.volatile, true)
+  assert.equal(schema.refs[root.dict.systemPrompt].meta.volatile, true)
   assert.match(schema.refs[root.dict.systemPrompt].meta.description, /工具未启用时默认也禁用/)
 })
 
@@ -136,6 +141,7 @@ for (const tools of [true, false]) {
       const fiber = ctx.plugin(marketPlugin, { tools, systemPrompt })
       await fiber.await()
       assert.equal(fixture.tools.size, tools ? 3 : 0)
+      assert.equal(fixture.settingsPolicies.size, 1)
       assert.equal(fixture.skillProviders.size, 1)
       assert.equal(fixture.routes.has('/agent-plugin-market'), true)
       const assembly = await ctx.systemPrompt.assemble()
@@ -144,14 +150,14 @@ for (const tools of [true, false]) {
       assert.equal(fixture.tools.size, 0)
       assert.equal(fixture.skillProviders.size, 0)
       assert.equal(fixture.routes.size, 0)
-      assert.equal(ctx.settings.describe().some((entry) => entry.ns === SETTINGS_NAMESPACE), false)
+      assert.equal(fixture.settingsPolicies.size, 0)
       assert.equal(renderPrompt(await ctx.systemPrompt.assemble()), '')
     })
   }
 }
 
-test('native settings toggles dispose and restore tools and guidance without duplicates', async (t) => {
-  const { ctx, webServer, connectionFiber, tools } = await hostFixture()
+test('native Config form updates dispose and restore tools and guidance without duplicates', async (t) => {
+  const { ctx, webServer, connectionFiber, tools, settingsPolicies } = await hostFixture()
   t.after(() => ctx.fiber.dispose())
   await ctx.plugin({ apply(webCtx) { webCtx.provide('webServer', webServer) } }).await()
   await connectionFiber.await()
@@ -161,20 +167,31 @@ test('native settings toggles dispose and restore tools and guidance without dup
     ctx: { tools: { restrict() { restrictions++; return () => { restrictions-- } } } },
   }
   ctx.provide('agents', { list: () => [homeAgent] })
-  const fiber = ctx.plugin(marketPlugin)
+  const values = { tools: true, systemPrompt: true }
+  const config = {
+    tools: { get: () => values.tools },
+    systemPrompt: { get: () => values.systemPrompt },
+  }
+  const fiber = ctx.plugin({
+    inject: marketPlugin.inject,
+    apply(pluginCtx) { return marketPlugin.apply(pluginCtx, config) },
+  })
   await fiber.await()
+  assert.deepEqual(Array.from(settingsPolicies.values()), [{ auto: false }])
   assert.equal(restrictions, 1)
   const prompt = async (cwd) => renderPrompt(await ctx.systemPrompt.assemble({ agent: { session: { header: { cwd } } } }))
   assert.match(await prompt('/repo'), /agent_market_info.*agent_market_set_plugin.*agent_market_set_skill/)
   assert.equal(await prompt('/fixture'), '')
   assert.match(await prompt('/fixture/project'), /agent_market_info/)
 
-  // Settings writes commit before asynchronous watchers finish; drain their
-  // microtasks and the plugin's child Fibers before inspecting effects.
+  // Profile writes update volatile references before the settings event; drain
+  // the event queue and child Fiber transition before inspecting effects.
+  let revision = 0
   async function update(patch) {
-    await ctx.settings.update(SETTINGS_NAMESPACE, patch)
+    Object.assign(values, patch)
+    ctx.emit('settings/document-updated', SETTINGS_ENTRY_ID, ++revision)
     await new Promise((resolve) => setImmediate(resolve))
-    await fiber.await()
+    await new Promise((resolve) => setImmediate(resolve))
   }
   await update({ tools: false })
   assert.equal(tools.size, 0)
@@ -198,11 +215,12 @@ test('native settings toggles dispose and restore tools and guidance without dup
   await Promise.all([update({ tools: false }), update({ tools: true }), update({ tools: false }), update({ tools: true })])
   assert.equal(tools.size, 3)
   assert.equal(restrictions, 1)
-  await ctx.settings.update(SETTINGS_NAMESPACE, { tools: false })
+  await update({ tools: false })
   await fiber.dispose()
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(tools.size, 0)
   assert.equal(restrictions, 0)
+  assert.equal(settingsPolicies.size, 0)
   assert.equal(await prompt('/repo'), '')
 })
 

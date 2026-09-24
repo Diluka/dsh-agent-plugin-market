@@ -123,17 +123,18 @@ declare global {
 
   type ActionResult = ApiResult<{ skipped?: boolean, reason?: string }>
 
-  type MarketFeatureScope = import('@deepseek-ai/dsh-client-ui-settings/client').SettingsScope<{tools: boolean, systemPrompt: boolean}>
+  type MarketFeatureValues = { tools: boolean, systemPrompt: boolean }
+  type MarketFeatureForm = import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForm<MarketFeatureValues>
+  type PluginConfigViewProps = { view: 'summary' | 'page' }
+  type PluginBundleConfigProps = PluginConfigViewProps & { form: MarketFeatureForm }
 
   interface ClientContext {
-    settingsScope: {
-      bind(spec: {namespace: string}): MarketFeatureScope
-    }
+    configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms
     connection: ConnectionHandle
     effect(effect: () => void | (() => void)): void
     slots: {
       inject(name: string, register: () => unknown): unknown
-      register(slot: { name: string, id: string, order: number, label: string } | { name: string, key: string }, render: () => React.ReactNode): unknown
+      register(slot: { name: string, id: string, order: number, label: string } | { name: string, key: string }, render: (props: PluginConfigViewProps) => React.ReactNode): unknown
     }
     workspaces: {
       list: {
