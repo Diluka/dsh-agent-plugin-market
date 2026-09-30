@@ -38,7 +38,7 @@ async function loadCatalog() {
   return (await loadClient()).catalog
 }
 
-test('targets DSH 0.1.7 client providers and config forms', async () => {
+test('declares DSH client providers and config forms', async () => {
   const manifest = JSON.parse(await readFile(packagePath, 'utf8'))
 
   assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)

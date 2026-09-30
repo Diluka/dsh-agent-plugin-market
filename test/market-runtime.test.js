@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { posix as path } from 'node:path'
 import test from 'node:test'
 
@@ -109,6 +110,27 @@ function runtimeFor(files, aliases) {
     dshHome: '/dsh',
   })
 }
+
+test('bridge recovery guidance uses the target DSH cohort in state and enable errors', async () => {
+  const { devDependencies } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const command = 'pnpm --dir "$DSH_PROFILE_DIR" add'
+    + ' @deepseek-ai/dsh-hooks-codex@' + devDependencies['@deepseek-ai/dsh-hooks-codex']
+    + ' @deepseek-ai/dsh-hook-protocol@' + devDependencies['@deepseek-ai/dsh-hook-protocol']
+  const service = createMarketService({
+    runtime: runtimeFor({}),
+    hooks: { available: false, async reconcile() {} },
+    onSkillsChanged() {},
+  })
+
+  const state = await service.getState()
+  assert.equal(state.hooksBridge.available, false)
+  assert.equal(state.hooksBridge.installCommand, command)
+  await assert.rejects(() => service.setPluginHooksEnabled({ marketId: 'market', pluginName: 'plugin', enabled: true }), (error) => {
+    assert.match(error.message, /Codex hooks bridge 不可用/)
+    assert.ok(error.message.includes(command))
+    return true
+  })
+})
 
 test('keeps plugin-referenced root skills out of the standalone group', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'

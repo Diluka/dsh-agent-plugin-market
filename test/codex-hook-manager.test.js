@@ -85,6 +85,28 @@ function managerFixture({ hookContent, approvalFingerprint, bridge = null, plugi
   return { get config() { return config }, manager, saves, writes }
 }
 
+test('an unavailable bridge preserves valid approvals without mounting or writing hooks', async () => {
+  const hookConfig = { hooks: { PostToolUse: [] } }
+  const fingerprint = hookFingerprint({ sources: [{ source: './hooks/hooks.json', config: hookConfig }] })
+  let mounts = 0
+  const fixture = managerFixture({
+    hookContent: JSON.stringify(hookConfig),
+    approvalFingerprint: fingerprint,
+    bridge: null,
+    plugin: () => { mounts++; throw new Error('unavailable bridge must not mount') },
+  })
+
+  await fixture.manager.reconcile()
+
+  assert.equal(fixture.manager.available, false)
+  assert.equal(fixture.manager.isActive('market/plugin'), false)
+  assert.equal(fixture.manager.runtimeError('market/plugin'), null)
+  assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint } })
+  assert.equal(mounts, 0)
+  assert.equal(fixture.writes.length, 0)
+  assert.equal(fixture.saves.length, 0)
+})
+
 test('reconcile revokes approval when the approved hooks config disappears', async () => {
   const fixture = managerFixture({ hookContent: null, approvalFingerprint: 'approved' })
 
