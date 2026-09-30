@@ -1,6 +1,6 @@
-// CI-only release-cohort pinning. DSH prerelease packages use caret ranges
-// that can resolve framework companions newer than the tested bundle expects.
-// DSH 0.1.7-rc.1 targets Cordis 4.0.4, Loader 1.0.5, and Include 1.0.9.
+// CI-only release-cohort pinning. DSH 0.2.0-rc.2 uses exact DSH dependencies,
+// but plugin wildcard peers and framework patch ranges can still drift.
+// DSH 0.2.0-rc.2 targets Cordis 4.0.4, Loader 1.0.5, and Include 1.0.9.
 // Revalidate this baseline together with DSH_VERSION when upgrading CI.
 const frameworkVersions = {
   '@deepseek-ai/cordis': '4.0.4',

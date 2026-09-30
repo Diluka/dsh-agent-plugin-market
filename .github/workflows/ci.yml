@@ -10,9 +10,9 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.1.7-rc.1
-  DSH_HOOKS_CODEX_VERSION: 0.1.7-rc.1
-  DSH_HOOK_PROTOCOL_VERSION: 0.1.7-rc.1
+  DSH_VERSION: 0.2.0-rc.2
+  DSH_HOOKS_CODEX_VERSION: 0.2.0-rc.2
+  DSH_HOOK_PROTOCOL_VERSION: 0.2.0-rc.2
 
 jobs:
   unit:
@@ -38,12 +38,12 @@ jobs:
       - run: git diff --check
 
   dsh-web-smoke:
-    name: DSH web smoke (${{ matrix.optional-hooks }})
+    name: 'DSH web smoke (profile hooks deps: ${{ matrix.profile-hooks }})'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        optional-hooks: [absent, present]
+        profile-hooks: [absent, present]
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -68,23 +68,23 @@ jobs:
 
       - name: Start DSH web with plugin
         env:
-          OPTIONAL_HOOKS: ${{ matrix.optional-hooks }}
+          PROFILE_HOOKS: ${{ matrix.profile-hooks }}
         run: |
           set -euo pipefail
 
-          export DSH_HOME="$RUNNER_TEMP/dsh-home-$OPTIONAL_HOOKS"
-          # Pin the complete DSH release cohort in both dlx and the profile's
-          # child pnpm installs; a CLI version alone still permits newer RCs.
+          export DSH_HOME="$RUNNER_TEMP/dsh-home-$PROFILE_HOOKS"
+          # Pin wildcard plugin peers and framework companions in both dlx and
+          # the profile's child pnpm installs to the tested DSH release cohort.
           export npm_config_global_pnpmfile="$GITHUB_WORKSPACE/.github/pin-dsh.cjs"
-          export npm_config_cache_dir="$RUNNER_TEMP/dsh-smoke-cache-$OPTIONAL_HOOKS"
+          export npm_config_cache_dir="$RUNNER_TEMP/dsh-smoke-cache-$PROFILE_HOOKS"
           dsh() { pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" "$@"; }
 
           profile="$DSH_HOME/profiles/web"
           mkdir -p "$profile"
-          hooks_bundle=''
+          # The CLI already supplies the bridge. This matrix varies only the
+          # profile's explicit dependencies; the bridge is not a bundle.
           packages=("$PLUGIN_TARBALL")
-          if [ "$OPTIONAL_HOOKS" = present ]; then
-            hooks_bundle=', "@deepseek-ai/dsh-hooks-codex"'
+          if [ "$PROFILE_HOOKS" = present ]; then
             packages+=("@deepseek-ai/dsh-hooks-codex@$DSH_HOOKS_CODEX_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_HOOK_PROTOCOL_VERSION")
           fi
           cat > "$profile/package.json" <<EOF
@@ -93,7 +93,7 @@ jobs:
             "private": true,
             "dsh": {
               "profile": {
-                "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-agent-plugin-market"$hooks_bundle]
+                "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-agent-plugin-market"]
               }
             }
           }
@@ -101,7 +101,7 @@ jobs:
           pnpm --dir "$profile" add "${packages[@]}"
 
           port=3080
-          log="$RUNNER_TEMP/dsh-web-$OPTIONAL_HOOKS.log"
+          log="$RUNNER_TEMP/dsh-web-$PROFILE_HOOKS.log"
           DSH_TELEMETRY_MODE=DISABLED DSH_PERMISSION_MODE=danger-full-access dsh --profile web --host 127.0.0.1 --port "$port" --no-open >"$log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
@@ -110,7 +110,7 @@ jobs:
             sed -n '1,240p' "$log" | sed -E 's/(token=)[^ )]+/\1<redacted>/g'
           }
 
-          cookie_jar="$RUNNER_TEMP/dsh-web-$OPTIONAL_HOOKS.cookies"
+          cookie_jar="$RUNNER_TEMP/dsh-web-$PROFILE_HOOKS.cookies"
           auth_url=""
           for _ in $(seq 1 60); do
             if ! kill -0 "$pid" 2>/dev/null; then
