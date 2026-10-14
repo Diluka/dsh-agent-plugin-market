@@ -118,6 +118,8 @@ whenToUse: 可选补充。
 - 生成的 bridge 配置：`<dsh-home>/agent-plugin-market/generated-hooks/`
 - 每个市场插件的 hooks 数据：`<dsh-home>/agent-plugin-market/hook-data/`
 
+Host 写入全局配置时显式使用以 `agent-plugin-market` 为边界的 `workspace-write` 策略；写入生成的 bridge 配置时以 `generated-hooks` 为边界。这些插件自有状态写入不依赖某个代理会话的工作目录，也不提升会话权限。沙盒文件系统仍会校验解析后的目标，拒绝超出可写根集合的符号链接；该集合包括对应存储目录及 DSH 允许的平台临时目录。
+
 每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。运行时写入 `version: 1`，以及 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组稀疏布尔覆盖值；没有某个覆盖键时继承全局状态。设置页和代理写入工具都使用同一个工作区覆盖文件。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
 
 ## 卸载

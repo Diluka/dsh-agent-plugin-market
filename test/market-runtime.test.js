@@ -72,7 +72,13 @@ function createVfsBackedFs(files, aliases = {}, writes = []) {
       return vfs.promises.readFile(targetPath(target), 'utf8')
     },
     async writeText(target, content, expected, signal, sandboxPolicy) {
-      const file = targetPath(target)
+      // Mirror the mounted DSH backend's agentless workspace-write fallback.
+      const policy = sandboxPolicy || { mode: 'workspace-write', workspaceRoot: '/workspace' }
+      const file = targetPath(await resolve(displayPath(target)))
+      const root = targetPath(await resolve(policy.workspaceRoot))
+      if (policy.mode !== 'workspace-write' || !(file === root || file.startsWith(root + '/'))) {
+        throw Object.assign(new Error('file access denied under workspace-write mode'), { code: 'FS_SANDBOX_DENIED' })
+      }
       writes.push({ path: file, content, expected, signal, sandboxPolicy })
       await vfs.promises.mkdir(path.dirname(file), { recursive: true })
       await vfs.promises.writeFile(file, content)
@@ -110,6 +116,79 @@ function runtimeFor(files, aliases) {
     dshHome: '/dsh',
   })
 }
+
+test('removes a market when the default sandbox workspace is outside plugin storage', async () => {
+  const configPath = '/dsh/agent-plugin-market/config.json'
+  const removedId = 'ponytail'
+  const config = {
+    markets: [{ id: removedId, repo: 'example/ponytail' }, { id: 'keep', repo: 'example/keep' }],
+    installed: {
+      'ponytail/plugin': { marketId: removedId, pluginName: 'plugin' },
+      'keep/plugin': { marketId: 'keep', pluginName: 'plugin' },
+    },
+    disabledSkills: { 'ponytail/plugin/skill': true, 'keep/plugin/skill': true },
+    enabledStandaloneSkills: { 'ponytail/standalone-skills/skill': true, 'keep/standalone-skills/skill': true },
+    hookApprovals: { 'ponytail/plugin': { fingerprint: 'remove' }, 'keep/plugin': { fingerprint: 'keep' } },
+  }
+  const expected = {
+    markets: [config.markets[1]],
+    installed: { 'keep/plugin': config.installed['keep/plugin'] },
+    disabledSkills: { 'keep/plugin/skill': true },
+    enabledStandaloneSkills: { 'keep/standalone-skills/skill': true },
+    hookApprovals: { 'keep/plugin': { fingerprint: 'keep' } },
+  }
+  const writes = []
+  const fs = createVfsBackedFs({ [configPath]: JSON.stringify(config) }, {}, writes)
+  let checkoutRemovals = 0
+  const runtime = createMarketRuntime({
+    fs,
+    subprocess: {
+      spawn({ argv, cwd }) {
+        assert.deepEqual(argv, ['rm', '-rf', '/dsh/agent-plugin-market/markets/ponytail'])
+        assert.equal(cwd, '/dsh/agent-plugin-market/markets')
+        checkoutRemovals++
+        return { done: Promise.resolve({ exitCode: 0 }), collected: {} }
+      },
+    },
+    dshHome: '/dsh',
+  })
+  let reconciled = 0
+  let invalidated = 0
+  const service = createMarketService({
+    runtime,
+    hooks: { async reconcile() { assert.deepEqual(await runtime.loadConfig(), expected); reconciled++ } },
+    onSkillsChanged() { invalidated++ },
+  })
+
+  assert.deepEqual(await service.removeMarket({ marketId: removedId }), { removed: true })
+  assert.deepEqual(await runtime.loadConfig(), expected)
+  assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/dsh/agent-plugin-market' })
+  assert.equal(checkoutRemovals, 1)
+  assert.equal(reconciled, 1)
+  assert.equal(invalidated, 1)
+})
+
+test('creates global config within plugin storage without widening the sandbox mode', async () => {
+  const writes = []
+  const fs = createVfsBackedFs({}, {}, writes)
+  const runtime = createMarketRuntime({ fs, subprocess: {}, dshHome: '/dsh' })
+  const config = await runtime.loadConfig()
+
+  await runtime.saveConfig(config)
+
+  assert.deepEqual(await runtime.loadConfig(), config)
+  assert.equal(writes[0].path, '/dsh/agent-plugin-market/config.json')
+  assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/dsh/agent-plugin-market' })
+})
+
+test('does not write global config through a symlink outside plugin storage', async () => {
+  const configPath = '/dsh/agent-plugin-market/config.json'
+  const fs = createVfsBackedFs({ '/outside/config.json': 'unchanged' }, { [configPath]: '/outside/config.json' })
+  const runtime = createMarketRuntime({ fs, subprocess: {}, dshHome: '/dsh' })
+
+  await assert.rejects(() => runtime.saveConfig({ markets: [], installed: {}, disabledSkills: {}, enabledStandaloneSkills: {}, hookApprovals: {} }), { code: 'FS_SANDBOX_DENIED' })
+  assert.equal(await fs.readText(await fs.resolve('/outside/config.json')), 'unchanged')
+})
 
 test('bridge recovery guidance uses the target DSH cohort in state and enable errors', async () => {
   const { devDependencies } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
