@@ -30,8 +30,12 @@ function hookFileFs(content, writes = []) {
       assert.equal(targetPath(target), hookPath)
       return currentContent(content)
     },
-    async writeText(target, value) {
-      writes.push({ path: targetPath(target), value })
+    async writeText(target, value, _expected, _signal, sandboxPolicy) {
+      const policy = sandboxPolicy || { mode: 'workspace-write', workspaceRoot: '/workspace' }
+      if (policy.mode !== 'workspace-write' || !targetPath(target).startsWith(policy.workspaceRoot + '/')) {
+        throw Object.assign(new Error('file access denied under workspace-write mode'), { code: 'FS_SANDBOX_DENIED' })
+      }
+      writes.push({ path: targetPath(target), value, sandboxPolicy })
     },
     contains(parent, child) {
       const parentPath = targetPath(parent)
@@ -84,6 +88,30 @@ function managerFixture({ hookContent, approvalFingerprint, bridge = null, plugi
   })
   return { get config() { return config }, manager, saves, writes }
 }
+
+test('approved hooks write generated configs inside their own sandbox boundary', async () => {
+  const hookConfig = { hooks: { PostToolUse: [{ command: 'echo ok' }] } }
+  const fingerprint = hookFingerprint({ sources: [{ source: './hooks/hooks.json', config: hookConfig }] })
+  const mountedPaths = []
+  const fixture = managerFixture({
+    hookContent: JSON.stringify(hookConfig),
+    approvalFingerprint: fingerprint,
+    bridge: function bridge() {},
+    plugin(_bridge, options) {
+      mountedPaths.push(options.configPath)
+      return { dispose() {} }
+    },
+  })
+
+  await fixture.manager.reconcile()
+
+  assert.equal(fixture.manager.isActive('market/plugin'), true)
+  assert.equal(fixture.manager.runtimeError('market/plugin'), null)
+  assert.equal(fixture.writes.length, 1)
+  assert.deepEqual(fixture.writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/generated-hooks' })
+  assert.deepEqual(mountedPaths, [fixture.writes[0].path])
+  assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint } })
+})
 
 test('an unavailable bridge preserves valid approvals without mounting or writing hooks', async () => {
   const hookConfig = { hooks: { PostToolUse: [] } }
