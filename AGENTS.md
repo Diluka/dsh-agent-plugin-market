@@ -49,6 +49,10 @@ repository is not a standalone web application.
 - DSH development dependencies and CI target runtime `0.2.1-rc.2` (npm `next`;
   `latest` remains the older `0.2.0-rc.2` cohort). Pin each DSH package
   explicitly; individual subpackage dist-tags can still point to older cohorts.
+  `engines.dsh` declares exactly that runtime: lower versions are incompatible
+  and higher versions are not declared compatible. Keep the package version
+  plain SemVer without a DSH suffix, and change `engines.dsh` together with the
+  dependency cohort and CI target, never independently.
   The Host must inject both `connection` and `webServer`. The bundle patch must
   also add `webServer` to the `connection` provider row while retaining
   `webStartup`: Connection RPC getters retain the provider's shadow context.

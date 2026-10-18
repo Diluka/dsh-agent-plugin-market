@@ -14,6 +14,8 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 当前开发依赖和 CI 验证版本为 DSH `0.2.1-rc.2`（当前 npm `next` 发布线；`latest` 仍指向较早的 `0.2.0-rc.2` cohort）。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
+包的 `engines.dsh` 以精确版本 `0.2.1-rc.2` 声明兼容范围：只有该 DSH 运行时通过安装与 profile 启动检查，更低版本不兼容，更高版本也未声明兼容。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；适配新的 DSH 版本时，需要同时更新 `engines.dsh`、开发依赖、CI 目标并重新验证。
+
 在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后在设置页「技能与挂钩」中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
 `@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-home-paths` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH 运行环境提供。工具与提示词开关保存在 profile entry 的 volatile Config fields 中，通过 DSH Config Forms 即时编辑，并以内联方式显示在插件 bundle 详情页。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示通过 profile 依赖安装所需包的命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.2.1-rc.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
@@ -140,7 +142,7 @@ git diff --check
 - `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
 - `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
 - `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
-- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。DSH `0.2.1-rc.2` 已精确声明其 DSH 依赖；仍需固定本插件的通配 peer 和框架 patch 范围，避免 smoke 安装漂移。Smoke job 按当前 DSH CLI 通过 pnpm 准备临时 profile 并应用包内的 Cordis patch。矩阵只区分 profile 是否显式安装 hooks 依赖；CLI 已自带 bridge，因此不代表运行时真正缺少 bridge。hook manager 在 bridge 不可用时的降级由 Node 测试覆盖。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
+- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。DSH `0.2.1-rc.2` 已精确声明其 DSH 依赖；版本一致性测试校验 `engines.dsh`、开发依赖与 CI 目标指向同一精确运行时，同时仍需固定本插件的通配 peer 和框架 patch 范围，避免 smoke 安装漂移。Smoke job 按当前 DSH CLI 通过 pnpm 准备临时 profile 并应用包内的 Cordis patch。矩阵只区分 profile 是否显式安装 hooks 依赖；CLI 已自带 bridge，因此不代表运行时真正缺少 bridge。hook manager 在 bridge 不可用时的降级由 Node 测试覆盖。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
 
 ## 架构
 
