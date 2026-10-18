@@ -46,12 +46,12 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies and CI target runtime `0.2.0-rc.2`, currently
-  both the npm `latest` and `next` dist-tags. Pin each DSH package explicitly;
-  individual subpackage dist-tags can still point to older cohorts.
+- DSH development dependencies and CI target runtime `0.2.1-rc.2` (npm `next`;
+  `latest` remains the older `0.2.0-rc.2` cohort). Pin each DSH package
+  explicitly; individual subpackage dist-tags can still point to older cohorts.
   The Host must inject both `connection` and `webServer`. The bundle patch must
   also add `webServer` to the `connection` provider row while retaining
-  `webRuntime`: Connection RPC getters retain the provider's shadow context.
+  `webStartup`: Connection RPC getters retain the provider's shadow context.
   Test with separate sibling Connection and WebServer provider Fibers; providing
   the WebServer on the root Context hides this guard failure.
 - Keep CI smoke installs on one DSH release cohort with `.github/pin-dsh.cjs`
@@ -61,7 +61,7 @@ repository is not a standalone web application.
   profile-local hooks dependencies, not runtime bridge availability: the official
   CLI includes the bridge. Do not add the bridge to `dsh.profile.bundles`; it has
   no bundle declaration. Cover actual bridge unavailability in Node tests.
-  Revalidate the Cordis 4.0.4 / Loader 1.0.5 / Include 1.0.9 companion baseline
+  Revalidate the Cordis 4.0.5 / Loader 1.0.6 / Include 1.0.10 companion baseline
   when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
   `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences

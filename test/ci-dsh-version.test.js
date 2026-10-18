@@ -41,11 +41,11 @@ test('CI pins the entire DSH dependency cohort without changing unrelated packag
   withVersion(dshVersion, () => {
     const pkg = {
       name: 'fixture',
-      dependencies: { '@deepseek-ai/dsh': '^0.1.7-rc.1', '@deepseek-ai/dsh-web-app': '^0.1.7-rc.1', '@deepseek-ai/cordis': '^4.0.4', 'js-yaml': '^4.2.0' },
+      dependencies: { '@deepseek-ai/dsh': '^0.2.0-rc.2', '@deepseek-ai/dsh-web-app': '^0.2.0-rc.2', '@deepseek-ai/cordis': '^4.0.5', 'js-yaml': '^4.2.0' },
       optionalDependencies: { '@deepseek-ai/dsh-hooks-codex': '*' },
       peerDependencies: { '@deepseek-ai/dsh-system-prompt': '*', '@deepseek-ai/schemastery': '*', 'dsh-agent-plugin-market': '*' },
       peerDependenciesMeta: { '@deepseek-ai/dsh-hooks-codex': { optional: true } },
-      devDependencies: { '@deepseek-ai/dsh-tools': '^0.1.7-rc.1', '@deepseek-ai/dshfake': '1.0.0' },
+      devDependencies: { '@deepseek-ai/dsh-tools': '^0.2.0-rc.2', '@deepseek-ai/dshfake': '1.0.0' },
     }
     assert.equal(hooks.readPackage(pkg), pkg)
     assert.equal(pkg.dependencies['@deepseek-ai/dsh'], dshVersion)
@@ -53,9 +53,9 @@ test('CI pins the entire DSH dependency cohort without changing unrelated packag
     assert.equal(pkg.optionalDependencies['@deepseek-ai/dsh-hooks-codex'], dshVersion)
     assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-system-prompt'], dshVersion)
     assert.equal(pkg.devDependencies['@deepseek-ai/dsh-tools'], dshVersion)
-    assert.equal(pkg.dependencies['@deepseek-ai/cordis'], '4.0.4')
+    assert.equal(pkg.dependencies['@deepseek-ai/cordis'], '4.0.5')
     assert.equal(pkg.dependencies['js-yaml'], '^4.2.0')
-    assert.equal(pkg.peerDependencies['@deepseek-ai/schemastery'], '3.18.4')
+    assert.equal(pkg.peerDependencies['@deepseek-ai/schemastery'], '3.18.5')
     assert.equal(pkg.peerDependencies['dsh-agent-plugin-market'], '*')
     assert.equal(pkg.devDependencies['@deepseek-ai/dshfake'], '1.0.0')
     assert.equal(pkg.peerDependenciesMeta['@deepseek-ai/dsh-hooks-codex'].optional, true)
@@ -66,14 +66,13 @@ test('CI pins the entire DSH dependency cohort without changing unrelated packag
 test('CI pins the compatible Cordis companions used by the target DSH cohort', () => {
   withVersion(dshVersion, () => {
     const expected = {
-      '@deepseek-ai/cordis': '4.0.4',
-      '@deepseek-ai/cordis-plugin-group': '1.0.4',
-      '@deepseek-ai/cordis-plugin-hmr': '1.0.19',
-      '@deepseek-ai/cordis-plugin-include': '1.0.9',
-      '@deepseek-ai/cordis-plugin-loader': '1.0.5',
-      '@deepseek-ai/cordis-plugin-timer': '1.1.6',
-      '@deepseek-ai/cosmokit': '1.8.5',
-      '@deepseek-ai/schemastery': '3.18.4',
+      '@deepseek-ai/cordis': '4.0.5',
+      '@deepseek-ai/cordis-plugin-group': '1.0.5',
+      '@deepseek-ai/cordis-plugin-include': '1.0.10',
+      '@deepseek-ai/cordis-plugin-loader': '1.0.6',
+      '@deepseek-ai/cordis-plugin-timer': '1.1.7',
+      '@deepseek-ai/cosmokit': '1.8.6',
+      '@deepseek-ai/schemastery': '3.18.5',
     }
     const pkg = { dependencies: Object.fromEntries(Object.keys(expected).map(name => [name, '*'])) }
     assert.deepEqual(hooks.readPackage(pkg).dependencies, expected)
