@@ -118,57 +118,78 @@ test('market injection alone cannot satisfy the Connection provider shadow guard
 
 test('feature Config validates volatile booleans and preserves enabled defaults', () => {
   const defaults = resolveConfig(marketPlugin, {})
-  assert.deepEqual({ tools: defaults.tools.get(), systemPrompt: defaults.systemPrompt.get() }, { tools: true, systemPrompt: true })
+  assert.deepEqual({ showInSidebar: defaults.showInSidebar.get(), tools: defaults.tools.get(), systemPrompt: defaults.systemPrompt.get() }, { showInSidebar: true, tools: true, systemPrompt: true })
+  const hiddenSidebar = resolveConfig(marketPlugin, { showInSidebar: false })
+  assert.deepEqual({ showInSidebar: hiddenSidebar.showInSidebar.get(), tools: hiddenSidebar.tools.get(), systemPrompt: hiddenSidebar.systemPrompt.get() }, { showInSidebar: false, tools: true, systemPrompt: true })
+  assert.deepEqual(marketPlugin.Config.simplify({ showInSidebar: false }), { showInSidebar: false }, 'persist an explicit false instead of dropping it as a default')
+  for (const showInSidebar of ['false', 0, [], {}]) {
+    assert.throws(() => resolveConfig(marketPlugin, { showInSidebar }))
+  }
   const disabledTools = resolveConfig(marketPlugin, { tools: false })
   assert.deepEqual({ tools: disabledTools.tools.get(), systemPrompt: disabledTools.systemPrompt.get() }, { tools: false, systemPrompt: true })
   assert.throws(() => resolveConfig(marketPlugin, { tools: 'false' }))
   const schema = marketPlugin.Config.toJSON()
   const root = schema.refs[schema.uid]
   assert.equal(root.meta.description, '功能')
+  const sidebar = schema.refs[root.dict.showInSidebar]
+  assert.equal(sidebar.type, 'boolean')
+  assert.equal(sidebar.meta.default, true)
+  assert.equal(sidebar.meta.volatile, true)
+  assert.match(sidebar.meta.description, /默认显示/)
+  assert.match(sidebar.meta.description, /仅隐藏侧边栏入口，不影响设置页、技能加载和挂钩运行/)
   assert.equal(schema.refs[root.dict.tools].meta.volatile, true)
   assert.equal(schema.refs[root.dict.systemPrompt].meta.volatile, true)
   assert.match(schema.refs[root.dict.systemPrompt].meta.description, /工具未启用时默认也禁用/)
 })
 
-for (const tools of [true, false]) {
-  for (const systemPrompt of [true, false]) {
-    test(`feature combination tools=${tools}, systemPrompt=${systemPrompt} preserves market UI and skills`, async (t) => {
-      const fixture = await hostFixture()
-      const { ctx, webServer, connectionFiber } = fixture
-      t.after(() => ctx.fiber.dispose())
-      await ctx.plugin({ apply(webCtx) { webCtx.provide('webServer', webServer) } }).await()
-      await connectionFiber.await()
-      const fiber = ctx.plugin(marketPlugin, { tools, systemPrompt })
-      await fiber.await()
-      assert.equal(fixture.tools.size, tools ? 3 : 0)
-      assert.equal(fixture.settingsPolicies.size, 1)
-      assert.equal(fixture.skillProviders.size, 1)
-      assert.equal(fixture.routes.has('/agent-plugin-market'), true)
-      const assembly = await ctx.systemPrompt.assemble()
-      assert.equal(assembly.sections.some((section) => section.name === PROMPT_SECTION), tools && systemPrompt)
-      await fiber.dispose()
-      assert.equal(fixture.tools.size, 0)
-      assert.equal(fixture.skillProviders.size, 0)
-      assert.equal(fixture.routes.size, 0)
-      assert.equal(fixture.settingsPolicies.size, 0)
-      assert.equal(renderPrompt(await ctx.systemPrompt.assemble()), '')
-    })
+for (const showInSidebar of [true, false]) {
+  for (const tools of [true, false]) {
+    for (const systemPrompt of [true, false]) {
+      test(`feature combination showInSidebar=${showInSidebar}, tools=${tools}, systemPrompt=${systemPrompt} preserves market UI and skills`, async (t) => {
+        const fixture = await hostFixture()
+        const { ctx, webServer, connectionFiber } = fixture
+        t.after(() => ctx.fiber.dispose())
+        await ctx.plugin({ apply(webCtx) { webCtx.provide('webServer', webServer) } }).await()
+        await connectionFiber.await()
+        const fiber = ctx.plugin(marketPlugin, { showInSidebar, tools, systemPrompt })
+        await fiber.await()
+        assert.equal(fixture.tools.size, tools ? 3 : 0)
+        assert.equal(fixture.settingsPolicies.size, 1)
+        assert.equal(fixture.skillProviders.size, 1)
+        assert.equal(fixture.routes.has('/agent-plugin-market'), true)
+        const assembly = await ctx.systemPrompt.assemble()
+        assert.equal(assembly.sections.some((section) => section.name === PROMPT_SECTION), tools && systemPrompt)
+        await fiber.dispose()
+        assert.equal(fixture.tools.size, 0)
+        assert.equal(fixture.skillProviders.size, 0)
+        assert.equal(fixture.routes.size, 0)
+        assert.equal(fixture.settingsPolicies.size, 0)
+        assert.equal(renderPrompt(await ctx.systemPrompt.assemble()), '')
+      })
+    }
   }
 }
 
-test('native Config form updates dispose and restore tools and guidance without duplicates', async (t) => {
-  const { ctx, webServer, connectionFiber, tools, settingsPolicies } = await hostFixture()
+test('native Config form updates preserve sidebar independence and toggle tools and guidance without duplicates', async (t) => {
+  const { ctx, webServer, connectionFiber, tools, settingsPolicies, routes, skillProviders } = await hostFixture()
   t.after(() => ctx.fiber.dispose())
   await ctx.plugin({ apply(webCtx) { webCtx.provide('webServer', webServer) } }).await()
   await connectionFiber.await()
   let restrictions = 0
+  let restrictionMounts = 0
+  let restrictionDisposals = 0
   const homeAgent = {
     session: { header: { cwd: '/fixture' } },
-    ctx: { tools: { restrict() { restrictions++; return () => { restrictions-- } } } },
+    ctx: { tools: { restrict() {
+      restrictions++
+      restrictionMounts++
+      return () => { restrictions--; restrictionDisposals++ }
+    } } },
   }
   ctx.provide('agents', { list: () => [homeAgent] })
-  const values = { tools: true, systemPrompt: true }
+  const values = { showInSidebar: true, tools: true, systemPrompt: true }
   const config = {
+    showInSidebar: { get: () => values.showInSidebar },
     tools: { get: () => values.tools },
     systemPrompt: { get: () => values.systemPrompt },
   }
@@ -193,10 +214,27 @@ test('native Config form updates dispose and restore tools and guidance without 
     await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setImmediate(resolve))
   }
+  // A sidebar-only settings write must retain registrations by identity, not
+  // merely recreate equivalent tools, restrictions, skills, or RPC handlers.
+  const registrations = () => [...tools.values(), ...routes.values(), ...skillProviders, ...settingsPolicies.keys(), ...settingsPolicies.values()]
+  async function updateSidebar(showInSidebar) {
+    const before = registrations()
+    const beforePrompt = await prompt('/repo')
+    const beforeRestrictions = [restrictions, restrictionMounts, restrictionDisposals]
+    await update({ showInSidebar })
+    const after = registrations()
+    assert.equal(after.length, before.length)
+    before.forEach((registration, index) => assert.equal(after[index], registration))
+    assert.deepEqual([restrictions, restrictionMounts, restrictionDisposals], beforeRestrictions)
+    assert.equal(await prompt('/repo'), beforePrompt)
+  }
+  await updateSidebar(false)
+  await updateSidebar(true)
   await update({ tools: false })
   assert.equal(tools.size, 0)
   assert.equal(restrictions, 0)
   assert.equal(await prompt('/repo'), '')
+  await updateSidebar(false)
   await update({ tools: true })
   assert.equal(tools.size, 3)
   assert.equal(restrictions, 1)
@@ -206,6 +244,7 @@ test('native Config form updates dispose and restore tools and guidance without 
   await update({ systemPrompt: false })
   assert.equal(tools.size, 3)
   assert.equal(await prompt('/repo'), '')
+  await updateSidebar(true)
   await update({ tools: false })
   await update({ tools: true })
   assert.equal(tools.size, 3)

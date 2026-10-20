@@ -91,7 +91,11 @@ declare global {
     spawn(options: object): HostSubprocessHandle
   }
 
-  type MarketFeatureConfig = { tools: { get(): boolean }, systemPrompt: { get(): boolean } }
+  type MarketFeatureConfig = {
+    showInSidebar: { get(): boolean }
+    tools: { get(): boolean }
+    systemPrompt: { get(): boolean }
+  }
 
   type HostSettingsService = Pick<import('@deepseek-ai/dsh-settings').SettingsForms, 'configure'>
 

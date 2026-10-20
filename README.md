@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 - **代理工具**：通过插件配置的「功能」开关控制 `agent_market_info`、`agent_market_set_plugin` 和 `agent_market_set_skill`，让代理查看市场状态并只修改工作区覆盖；支持注入简短工具用法提示词。工具关闭时也停止注入提示词，具体配置见 [代理市场工具](docs/agent-tools.md)。home 路径会话会被 scoped restriction 隐藏这些工具；若运行时未能隐藏，执行时也会拒绝。
 - **原地加载**：安装插件只保存安装状态，不复制市场文件。技能的 `resourceBase` 指向克隆后的技能目录，因此技能内的相对资源可用。
 - **Codex hooks（可选）**：从 Codex 插件清单发现 hooks 配置；只有已安装的插件才能启用它们。启用需要设置页的双重确认、配置指纹审批和可用的 `@deepseek-ai/dsh-hooks-codex` bridge。
-- **设置页**：设置菜单添加「技能与挂钩」区段，提供市场、插件、技能和 hooks 的管理及目录筛选。
+- **管理入口**：工作区列表上方的侧边栏默认显示「技能与挂钩」，打开独立管理面板；设置菜单保留同名区段。两个入口复用相同的市场、插件、技能和 hooks 管理界面及目录筛选。在插件配置的「功能」分组中关闭「在侧边栏显示」可即时隐藏侧边栏入口，不影响设置页或已打开的面板。同一浏览器页面内并存的管理视图会在操作成功后同步刷新，并保留各自的配置作用域。
 
 ## 安装
 
@@ -16,9 +16,9 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 包的 `engines.dsh` 以精确版本 `0.2.1-rc.2` 声明兼容范围：只有该 DSH 运行时通过安装与 profile 启动检查，更低版本不兼容，更高版本也未声明兼容。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；适配新的 DSH 版本时，需要同时更新 `engines.dsh`、开发依赖、CI 目标并重新验证。
 
-在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后在设置页「技能与挂钩」中管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
+在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后从工作区列表上方的「技能与挂钩」或设置页同名区段管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
-`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-home-paths` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH 运行环境提供。工具与提示词开关保存在 profile entry 的 volatile Config fields 中，通过 DSH Config Forms 即时编辑，并以内联方式显示在插件 bundle 详情页。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示通过 profile 依赖安装所需包的命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.2.1-rc.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
+`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-home-paths` 和 `@deepseek-ai/schemastery` 是运行时 peer dependencies，由 DSH 运行环境提供。侧边栏显示、工具与提示词开关保存在 `dsh-agent-plugin-market` profile entry 的 volatile Config fields 中，通过 DSH Config Forms 即时编辑，并以内联方式显示在插件 bundle 详情页的「Agent 插件市场 → 功能」分组；`showInSidebar` 默认 `true`，与 `tools`、`systemPrompt` 独立。市场与技能功能不依赖 hooks bridge；bridge 缺失时，设置页显示通过 profile 依赖安装所需包的命令，并禁用 hooks 开关。Host RPC 使用 DSH `0.2.1-rc.2` 的 Connection 通道，由运行时统一执行 Host/Origin 校验和浏览器会话 token 认证；通过认证的本机或网络 Web 页面都可管理 Host 上的市场、Git checkout 和 hooks。代理工具只暴露读取和工作区覆盖写入，不执行市场添加、删除、Git 更新、全局安装/卸载或 hooks 授权。
 
 ### 启用 Codex hooks（可选）
 
@@ -157,7 +157,7 @@ git diff --check
 | Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
 | Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
-| Client | `lib/client.js` | 浏览器入口，注册插件「功能」配置、「技能与挂钩」设置页和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
+| Client | `lib/client.js` | 浏览器入口，注册插件「功能」配置、可配置显示的「技能与挂钩」侧边栏面板、复用同一页面的设置区段和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
 | Profile composition | `cordis.patch.yml` | 将双端插件包插入 web profile。 |
 
 Hook 元数据按协议键存入 `hookConfigs`；当前实现只挂载 `codex` 适配器。

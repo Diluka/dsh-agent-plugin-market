@@ -123,18 +123,27 @@ declare global {
 
   type ActionResult = ApiResult<{ skipped?: boolean, reason?: string }>
 
-  type MarketFeatureValues = { tools: boolean, systemPrompt: boolean }
+  type MarketFeatureValues = { tools: boolean, systemPrompt: boolean, showInSidebar: boolean }
   type MarketFeatureForm = import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForm<MarketFeatureValues>
   type PluginConfigViewProps = { view: 'summary' | 'page' }
-  type PluginBundleConfigProps = PluginConfigViewProps & { form: MarketFeatureForm }
+  type PluginBundleConfigProps = PluginConfigViewProps & { form: MarketFeatureForm, locale: MarketLocale }
+
+  interface MarketLocale {
+    getSnapshot(): unknown
+    subscribe(listener: () => void): () => void
+    register(namespace: string, locale: string, dict: Record<string, string>): () => void
+    bind(namespace: string): (key: string) => string
+  }
 
   interface ClientContext {
+    locale: MarketLocale
     configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms
     connection: ConnectionHandle
     effect(effect: () => void | (() => void)): void
     slots: {
-      inject(name: string, register: () => unknown): unknown
-      register(slot: { name: string, id: string, order: number, label: string } | { name: string, key: string }, render: (props: PluginConfigViewProps) => React.ReactNode): unknown
+      inject(name: string, register: () => () => void): () => void
+      register(slot: { name: 'sidebar.panellist', id: string, order: number, label: () => string }, render: (props: { size: number, active: boolean }) => React.ReactNode): () => void
+      register(slot: { name: string, id: string, order: number, label: string } | { name: string, key: string }, render: (props: PluginConfigViewProps) => React.ReactNode): () => void
     }
     workspaces: {
       list: {
