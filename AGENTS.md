@@ -94,7 +94,10 @@ repository is not a standalone web application.
   is a small native button adapter.
 - Keep the settings section ID stable as `skills-and-hooks` unless the DSH
   settings integration is intentionally migrated. The visible label is
-  `技能与挂钩`.
+  `技能与挂钩`. Reuse the same MarketPage for the `agent-plugin-market` main
+  panel and settings section. Native `showInSidebar` defaults to enabled and
+  controls only the `sidebar.panellist` entry; hiding it must retain settings,
+  an already-open panel, skills, hooks, and model-facing feature lifetimes.
 - Treat `lib/`, `package.json`, `cordis.patch.yml`, and applicable tests as the
   source of truth for repository behavior. When behavior changes, update every
   tracked Markdown document that describes it; do not describe Codex bridge
@@ -105,9 +108,13 @@ repository is not a standalone web application.
 - Do not start a replacement Vite server for the existing DSH GUI. Client
   changes need a page refresh unless the DSH checkout's `pnpm run dev:web`
   watcher is running; claim HMR only after verifying that watcher.
-- Do not restart DSH autonomously. Host and package changes need a restart, so
-  ask the user to restart and confirm the current state, or end the turn asking
-  them to message again after restarting.
+- Do not restart DSH autonomously or assume every Host/package edit requires
+  one. Verify the installed HMR contract and the actual reload trigger first:
+  profile recomposition can replace changed loaded files in installed or linked
+  plugins; module watching requires configured roots. Config Editor writes do
+  not themselves replace modules. If the runtime reports `restart-required` or
+  no supported reload path is active, ask the user to restart and confirm before
+  continuing runtime validation.
 
 ## Validation
 
@@ -123,9 +130,10 @@ git diff --check
 ```
 
 For UI, link this repository root into the target DSH web profile. For Host or
-package changes, ask the user to restart DSH and confirm it has restarted, then
-test the existing GUI at `http://127.0.0.1:3080` with `agent-browser`. Do not
-use curl as UI evidence. Check the settings entry, market controls,
+package changes, confirm the live schema/activation after a supported HMR reload;
+only when a restart is needed, ask the user to restart and confirm first. Test
+the existing GUI at `http://127.0.0.1:3080` with `agent-browser`. Do not use curl
+as UI evidence. Check the settings entry, market controls,
 disabled/enabled switch contrast, and both light and dark themes after visual
 changes.
 

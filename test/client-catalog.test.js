@@ -27,7 +27,7 @@ async function loadClient() {
         throw new Error('unexpected external require: ' + id)
       })
       assert.equal(typeof client.apply, 'function')
-      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces', 'configForms'])
+      assert.deepEqual(Array.from(client.inject), ['connection', 'slots', 'workspaces', 'configForms', 'locale'])
       return client
     })()
   }
