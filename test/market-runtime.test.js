@@ -431,6 +431,135 @@ test('enables a plugin skill in a workspace even when the plugin base is not ins
   assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-b' })).map((skill) => skill.fullName), [])
 })
 
+function blockedActivationFixture({ installed = true, source = 'plugins/plugin', refuseSave = false, duplicate = false, additionalSource = '', unreadableSource = false } = {}) {
+  const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const globalConfig = {
+    markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
+    installed: installed ? { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } } : {},
+    disabledSkills: { 'market/plugin/three': true },
+    enabledStandaloneSkills: {},
+    hookApprovals: {},
+  }
+  const workspaceConfig = {
+    version: 1,
+    plugins: { 'market/plugin': false, 'unrelated/plugin': false },
+    pluginSkills: { 'market/plugin/two': true, 'unrelated/plugin/keep': true },
+    standaloneSkills: { 'unrelated/standalone-skills/keep': true },
+  }
+  const writes = []
+  const fs = createVfsBackedFs({
+    '/dsh/agent-plugin-market/config.json': JSON.stringify(globalConfig),
+    [marketDir + '/marketplace.json']: JSON.stringify({ plugins: [{ name: 'plugin', source }, ...(duplicate ? [{ name: 'plugin', source: 'plugins/duplicate' }] : [])] }),
+    [marketDir + '/plugins/plugin/plugin.json']: JSON.stringify({ name: 'plugin', ...(additionalSource ? { skills: ['skills', additionalSource] } : {}) }),
+    ...Object.fromEntries(['one', 'two', 'three', 'four'].map((name) => [marketDir + '/plugins/plugin/skills/' + name + '/SKILL.md', skillDoc(name)])),
+    ...(duplicate ? {
+      [marketDir + '/plugins/duplicate/plugin.json']: JSON.stringify({ name: 'plugin' }),
+      [marketDir + '/plugins/duplicate/skills/five/SKILL.md']: skillDoc('five'),
+    } : {}),
+    ...(additionalSource === 'extra' ? { [marketDir + '/plugins/plugin/extra/five/SKILL.md']: skillDoc('five') } : {}),
+    '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify(workspaceConfig),
+  }, {}, writes)
+  if (refuseSave) fs.writeText = async () => { throw new Error('fixture save refused') }
+  let readable = !unreadableSource
+  const listDir = fs.listDir
+  fs.listDir = async (target) => {
+    const dir = typeof target === 'string' ? target : target.displayPath
+    if (!readable && dir.endsWith('/extra')) throw Object.assign(new Error('fixture EIO'), { code: 'EIO' })
+    return listDir(target)
+  }
+  const runtime = createMarketRuntime({ fs, subprocess: {}, dshHome: '/dsh' })
+  const workspace = { id: 'workspace-a', title: 'A', path: '/workspace-a' }
+  let invalidated = 0
+  const service = createMarketService({
+    runtime,
+    hooks: { async reconcile() {} },
+    workspaces: { list: () => [workspace], get: (id) => id === workspace.id ? workspace : undefined },
+    onSkillsChanged() { invalidated++ },
+  })
+  return { runtime, service, globalConfig, workspaceConfig, writes, invalidated: () => invalidated, recoverSource() { readable = true } }
+}
+
+for (const installed of [true, false]) {
+  test(`enabling a skill lifts its disabled parent without enabling siblings (installed=${installed})`, async () => {
+    const fixture = blockedActivationFixture({ installed })
+    const { runtime, service } = fixture
+    const otherWorkspaceBefore = await runtime.collectSkills({ cwd: '/workspace-b' })
+    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-a' }), [])
+
+    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled' })
+    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/one'])
+    const state = await service.getState({ workspaceId: 'workspace-a' })
+    assert.equal(state.markets[0].plugins[0].enabled, true)
+    assert.deepEqual(state.markets[0].plugins[0].skills.map((skill) => [skill.name, skill.enabled]), [
+      ['four', false], ['one', true], ['three', false], ['two', false],
+    ])
+    assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), {
+      ...fixture.workspaceConfig,
+      plugins: { 'market/plugin': true, 'unrelated/plugin': false },
+      pluginSkills: {
+        'market/plugin/one': true, 'market/plugin/two': false, 'market/plugin/three': false, 'market/plugin/four': false,
+        'unrelated/plugin/keep': true,
+      },
+    })
+    assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
+    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-b' }), otherWorkspaceBefore)
+    assert.equal(fixture.writes.length, 1, 'parent and skill coordination is one workspace write')
+    assert.equal(fixture.writes[0].path, '/workspace-a/.dsh/agent-plugin-market.json')
+    assert.equal(fixture.invalidated(), 1)
+
+    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'disabled' })
+    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-a' }), [])
+    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/two', mode: 'enabled' })
+    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/two'])
+    await service.setWorkspacePluginEnabled({ workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin', mode: 'disabled' })
+    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/four', mode: 'enabled' })
+    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/four'])
+  })
+}
+
+for (const target of ['one', 'five']) {
+  test(`coordination includes every source sharing a plugin key when enabling ${target}`, async () => {
+    const fixture = blockedActivationFixture({ duplicate: true })
+    await fixture.service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/' + target, mode: 'enabled' })
+    assert.deepEqual((await fixture.runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/' + target])
+    assert.equal(fixture.writes.length, 1)
+  })
+}
+
+test('an incomplete multi-source scan cannot activate the parent or omit a sibling', async () => {
+  const fixture = blockedActivationFixture({ additionalSource: 'extra', unreadableSource: true })
+  await assert.rejects(() => fixture.service.setWorkspaceSkillEnabled({
+    workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled',
+  }), /fixture EIO/)
+  assert.deepEqual(await fixture.runtime.loadWorkspaceConfig('/workspace-a'), fixture.workspaceConfig)
+  assert.equal(fixture.writes.length, 0)
+  assert.equal(fixture.invalidated(), 0)
+  fixture.recoverSource()
+  assert.deepEqual(await fixture.runtime.collectSkills({ cwd: '/workspace-a' }), [])
+  await fixture.service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled' })
+  assert.deepEqual((await fixture.runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/one'])
+  assert.equal((await fixture.runtime.loadWorkspaceConfig('/workspace-a')).pluginSkills['market/plugin/five'], false)
+})
+
+for (const scenario of [
+  { name: 'unknown skill', fullName: 'market/plugin/missing', pattern: /技能不存在/ },
+  { name: 'missing declared source', additionalSource: 'missing', pattern: /技能目录/ },
+  { name: 'escaped declared source', additionalSource: '../../outside', pattern: /技能目录/ },
+  { name: 'escaped plugin source', source: '../../outside', pattern: /插件路径/ },
+  { name: 'refused save', refuseSave: true, pattern: /fixture save refused/ },
+]) {
+  test(`failed activation leaves parent and siblings unchanged: ${scenario.name}`, async () => {
+    const fixture = blockedActivationFixture(scenario)
+    await assert.rejects(() => fixture.service.setWorkspaceSkillEnabled({
+      workspaceId: 'workspace-a', fullName: scenario.fullName || 'market/plugin/one', mode: 'enabled',
+    }), scenario.pattern)
+    assert.deepEqual(await fixture.runtime.loadWorkspaceConfig('/workspace-a'), fixture.workspaceConfig)
+    assert.deepEqual(await fixture.runtime.loadConfig(), fixture.globalConfig)
+    assert.equal(fixture.writes.length, 0)
+    assert.equal(fixture.invalidated(), 0)
+  })
+}
+
 test('does not duplicate a plugin skill enabled both globally and in the workspace', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({

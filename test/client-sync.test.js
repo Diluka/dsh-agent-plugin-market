@@ -87,7 +87,7 @@ async function viewsFixture(initialMarkets = []) {
         reads.push(args.workspaceId || 'global')
         return { ok: true, value: { markets: structuredClone(markets), workspaces, scope: args.workspaceId ? { kind: 'workspace', id: args.workspaceId } : { kind: 'global' } } }
       }
-      assert.ok(['add-market', 'set-workspace-skill-enabled', 'set-workspace-plugin-enabled'].includes(method))
+      assert.ok(['add-market', 'set-workspace-skill-enabled', 'set-workspace-plugin-enabled', 'set-skill-enabled', 'install-plugin', 'uninstall-plugin'].includes(method))
       writes.push(structuredClone({ method, args }))
       if (refuseWrite) return { ok: false, error: { message: 'fixture write refused' } }
       if (method === 'add-market') markets.push({ id: 'fixture-market', name: 'Fixture Market', repo: args.repo, plugins: [{ name: 'fixture-plugin', skills: [{ name: 'fixture-skill' }] }] })
@@ -259,15 +259,19 @@ test('individual enablement remains active without an installed plugin and has a
   })
 })
 
-test('a plugin-level disablement locks the skill switch at its effective off state', async (t) => {
+test('an installed plugin skill stays clickable even when its workspace parent is disabled', async (t) => {
   const fixture = await skillFixture(t, { plugin: { installed: true, globalEnabled: true, workspaceOverride: false }, skill: { workspaceOverride: true } })
   assert.equal(fixture.toggle.props.checked, false)
-  assert.equal(fixture.toggle.props.disabled, true)
-  assert.equal(fixture.toggle.props.title, '请先启用所属插件')
+  assert.equal(fixture.toggle.props.disabled, false)
+  assert.equal(fixture.toggle.props.title, undefined)
   assert.ok(!fixture.pluginToggle.props.disabled)
   assert.match(text(fixture.row), /未启用/)
   assert.doesNotMatch(text(fixture.row), /所属插件|全局|继承/)
-  assert.equal(fixture.reset.props.disabled, false, 'a blocked skill can still clear its own override')
+  await fixture.toggle.props.onChange(true)
+  assert.deepEqual(fixture.writes[0], {
+    method: 'set-workspace-skill-enabled',
+    args: { workspaceId: 'workspace', fullName: 'market/plugin/skill', mode: 'enabled' },
+  })
 })
 
 test('workspace-disabled and default-disabled skills have the same primary off state', async (t) => {
@@ -328,17 +332,42 @@ test('in-flight and refused workspace changes never optimistically report an ena
   assert.match(text(refused), /fixture write refused/)
 })
 
-test('current state, reset action and blocked tooltip follow the locale', async (t) => {
+test('current state and secondary reset action follow the locale without inherited restrictions', async (t) => {
   const fixture = await skillFixture(t, { locale: 'en', plugin: { workspaceOverride: false }, skill: { workspaceOverride: true } })
   assert.match(text(fixture.row), /Disabled/)
   assert.equal(text(fixture.reset), 'Restore default')
-  assert.equal(fixture.toggle.props.title, 'Enable the plugin first')
+  assert.equal(fixture.toggle.props.title, undefined)
+  assert.equal(fixture.toggle.props.disabled, false)
   assert.doesNotMatch(text(fixture.row), /全局|继承|未启用|未生效/)
 })
 
-test('global uninstalled plugin skills retain the install prerequisite', async (t) => {
+test('global uninstalled plugin skills show the same control with an installation prerequisite', async (t) => {
   const fixture = await skillFixture(t, { workspace: false })
-  assert.match(text(fixture.row), /安装后可启用/)
-  assert.equal(fixture.toggle, undefined)
+  assert.match(text(fixture.row), /未启用/)
+  assert.equal(fixture.toggle.props.checked, false)
+  assert.equal(fixture.toggle.props.disabled, true)
+  assert.equal(fixture.toggle.props.title, '请先启用所属插件')
   assert.equal(fixture.reset, undefined)
+})
+
+test('global and workspace scopes use identical activation controls with scope-specific writes', async (t) => {
+  const global = await skillFixture(t, { workspace: false, plugin: { installed: true, enabled: true }, skill: { enabled: true } })
+  const workspace = await skillFixture(t, { plugin: { installed: true, enabled: true }, skill: { enabled: true } })
+  assert.equal(text(global.row), text(workspace.row))
+  assert.equal(global.toggle.type, workspace.toggle.type)
+  assert.equal(global.pluginToggle.type, workspace.pluginToggle.type)
+  assert.equal(global.toggle.props.checked, true)
+  assert.equal(global.toggle.props.disabled, false)
+  assert.equal(global.pluginToggle.props.checked, true)
+  assert.equal(global.reset, undefined)
+  await global.toggle.props.onChange(false)
+  await global.toggle.props.onChange(true)
+  await global.pluginToggle.props.onChange(false)
+  await global.pluginToggle.props.onChange(true)
+  assert.deepEqual(global.writes, [
+    { method: 'set-skill-enabled', args: { fullName: 'market/plugin/skill', enabled: false } },
+    { method: 'set-skill-enabled', args: { fullName: 'market/plugin/skill', enabled: true } },
+    { method: 'uninstall-plugin', args: { marketId: 'market', pluginName: 'plugin' } },
+    { method: 'install-plugin', args: { marketId: 'market', pluginName: 'plugin' } },
+  ])
 })

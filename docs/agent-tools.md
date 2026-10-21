@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | `agent_market_info` | 查看市场、插件、技能、hooks、工作区列表和当前作用域。 | 只读 |
 | `agent_market_set_plugin` | 设置当前工作区中某个市场插件的三态覆盖。 | `<workspace>/.dsh/agent-plugin-market.json` 的 `plugins` |
-| `agent_market_set_skill` | 设置当前工作区中某个市场技能的三态覆盖。 | `<workspace>/.dsh/agent-plugin-market.json` 的 `pluginSkills` 或 `standaloneSkills` |
+| `agent_market_set_skill` | 设置当前工作区中某个技能的启用状态；必要时自动协调父级，保持其他技能有效状态不变。 | `<workspace>/.dsh/agent-plugin-market.json` 的 `pluginSkills`、必要时的 `plugins`，或 `standaloneSkills` |
 
 ## `agent_market_info`
 
@@ -56,7 +56,7 @@
 
 ## `agent_market_set_plugin`
 
-设置某个市场插件在当前工作区中的启用模式。插件级 `disabled` 会让该插件下所有技能在该工作区失效。
+设置某个市场插件在当前工作区中的启用模式。插件级 `disabled` 会让该插件下所有技能在该工作区失效，但不会锁住单技能操作；后续开启单个技能时由服务自动协调父级。
 
 | 参数 | 必填 | 取值 | 作用 |
 | --- | --- | --- | --- |
@@ -86,7 +86,7 @@
 
 ## `agent_market_set_skill`
 
-设置某个市场技能在当前工作区中的启用模式。工具会根据 `full_name` 自动判断目标是插件技能还是独立技能，并写入对应覆盖组。插件技能的 `enabled` 覆盖会独立生效：即使插件自身继承全局且未安装，该技能仍会在本工作区加载；只有插件级 `disabled` 才会让该插件下所有技能在该工作区失效。
+设置某个市场技能在当前工作区中的启用模式。工具会根据 `full_name` 自动判断目标是插件技能还是独立技能。开启插件技能时，如果父级插件在该工作区被禁用，服务会校验当前插件技能目录，在同一次工作区写入中启用父级并为其他技能保存关闭状态，只使目标技能生效，不连带开启兄弟技能；目录无法完整扫描时不写入；父级与技能状态通过同一次工作区配置写入提交。插件未全局安装时也可独立开启单个技能。全局安装状态、全局技能开关及其他工作区均不受影响。
 
 | 参数 | 必填 | 取值 | 作用 |
 | --- | --- | --- | --- |
