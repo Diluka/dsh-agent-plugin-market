@@ -58,6 +58,7 @@ declare global {
     globalEnabled?: boolean
     workspaceOverride?: boolean | null
     enabled?: boolean
+    activationState?: 'enabled' | 'partial' | 'disabled'
     unsupported?: boolean
     skills?: CatalogSkill[]
     hooks?: CatalogHooks | null
