@@ -138,14 +138,14 @@ test('counts only the market state represented by the catalog', async () => {
   assert.deepEqual({ ...stats }, {
     installedPlugins: 2,
     activeSkills: 4,
-    activeHooks: 1,
+    activeHooks: 2,
     availablePlugins: 2,
     availableSkills: 5,
     availableHooks: 2,
   })
 })
 
-test('uses effective workspace plugin state for catalog filtering and statistics', async () => {
+test('installed-resource filtering is independent of current activation', async () => {
   const catalog = await loadCatalog()
   const market = {
     plugins: [
@@ -157,7 +157,7 @@ test('uses effective workspace plugin state for catalog filtering and statistics
 
   assert.equal(catalog.pluginEnabled(market.plugins[0]), false)
   assert.equal(catalog.pluginEnabled(market.plugins[1]), true)
-  assert.deepEqual(Array.from(catalog.catalogForMarket(market, '', 'installed').matches, (match) => match.plugin.name), ['workspace-only'])
+  assert.deepEqual(Array.from(catalog.catalogForMarket(market, '', 'installed').matches, (match) => match.plugin.name), ['global-disabled'])
   assert.equal(catalog.catalogStats([market]).installedPlugins, 1)
 })
 
