@@ -685,7 +685,7 @@ test('a removed workspace cannot keep its cached editable snapshot', async (t) =
   assert.equal(loadedScope(fixture).kind, 'global')
 })
 
-test('a failed post-write reload does not expose pre-write data as current', async (t) => {
+test('a failed post-write reload keeps the catalog mounted but read-only until retry', async (t) => {
   const fixture = await skillFixture(t, { plugin: { installed: true } })
   fixture.onWrite(() => fixture.setMarkets(activationMarkets(true)))
   fixture.holdReads()
@@ -693,14 +693,68 @@ test('a failed post-write reload does not expose pre-write data as current', asy
   await settle()
   fixture.pendingReads.at(-1).fail('accepted write could not be reloaded')
   await write
-  assert.equal(editableNodes(fixture).length, 0)
+  assert.ok(child(fixture.page.render(), 'market'), 'the same catalog remains present after reload failure')
+  assert.equal(editableNodes(fixture).length, 2)
+  assert.ok(editableNodes(fixture).every((node) => node.props.disabled))
   assert.match(text(fixture.render()), /accepted write could not be reloaded/)
+  assert.match(text(fixture.render()), /当前显示上次状态/)
+  await fixture.master.props.onChange(false)
+  assert.equal(fixture.writes.length, 1, 'retained callbacks cannot write stale data')
   const retry = nodes(fixture.render(), (node) => node.type === 'Button' && text(node) === '重试')[0]
   const read = retry.props.onClick()
   await settle()
   fixture.pendingReads.at(-1).respond()
   await read
   assert.equal(masterOf(fixture).props.checked, true)
+  assert.ok(editableNodes(fixture).every((node) => !node.props.disabled))
+})
+
+for (const target of ['master', 'skill']) {
+  test(`same-scope ${target} writes refresh in place without replacing the catalog with a loader`, async (t) => {
+    const fixture = await skillFixture(t, { plugin: { installed: true } })
+    child(fixture.page.render(), 'catalog-toolbar').props.onQueryChange('skill')
+    const before = child(fixture.page.render(), 'market')
+    fixture.onWrite(() => fixture.setMarkets(activationMarkets(true)))
+    fixture.holdReads()
+    const write = (target === 'master' ? fixture.master : fixture.toggle).props.onChange(true)
+    await settle()
+    const pending = fixture.page.render()
+    assert.ok(child(pending, 'market'), 'same-scope reload must not remove the existing card')
+    assert.equal(child(pending, 'market').type, before.type)
+    assert.equal(pending.props['aria-busy'], true)
+    assert.equal(nodes(pending, (node) => node.props.className === 'apm-loading').length, 0)
+    assert.equal(child(pending, 'catalog-toolbar').props.query, 'skill')
+    assert.equal(nodes(pending, (node) => node.type?.name === 'PluginSection')[0].props.open, true)
+    assert.equal(editableNodes(fixture).length, 2)
+    assert.ok(editableNodes(fixture).every((node) => node.props.disabled))
+    fixture.pendingReads.at(-1).respond()
+    await write
+    assert.equal(fixture.page.render().props['aria-busy'], false)
+    assert.equal(masterOf(fixture).props.checked, true)
+    assert.equal(child(fixture.page.render(), 'catalog-toolbar').props.query, 'skill')
+    assert.equal(nodes(fixture.page.render(), (node) => node.type?.name === 'PluginSection')[0].props.open, true)
+    assert.ok(editableNodes(fixture).every((node) => !node.props.disabled))
+  })
+}
+
+test('background reload errors retain a read-only catalog while allowing a safe scope change', async (t) => {
+  const fixture = await skillFixture(t, { workspace: false, plugin: { installed: true } })
+  fixture.holdReads()
+  fixture.setWorkspaces([defaultWorkspace, otherWorkspace])
+  fixture.page.render()
+  fixture.pendingReads.at(-1).fail('background load refused')
+  await settle()
+  assert.ok(child(fixture.page.render(), 'market'))
+  assert.ok(editableNodes(fixture).every((node) => node.props.disabled))
+  assert.equal(child(fixture.page.render(), 'scope').props.disabled, false)
+  await fixture.master.props.onChange(true)
+  assert.equal(fixture.writes.length, 0)
+  selectScope(fixture, 'workspace')
+  assert.equal(editableNodes(fixture).length, 0, 'actual scope changes still remove the old scope')
+  fixture.pendingReads.at(-1).respond()
+  await settle()
+  assert.equal(loadedScope(fixture).id, 'workspace')
+  assert.ok(editableNodes(fixture).every((node) => !node.props.disabled))
 })
 
 test('synchronous duplicate callbacks and scope changes cannot bypass an in-flight write', async (t) => {
