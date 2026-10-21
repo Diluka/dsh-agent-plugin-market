@@ -65,7 +65,7 @@ async function viewsFixture(initialMarkets = []) {
       removeEventListener() {},
     },
   })
-  const primitives = { Menu: 'Menu', Button: 'Button', Pill: 'Pill', DisclosureRow: 'DisclosureRow', Input: 'Input' }
+  const primitives = { Menu: 'Menu', Button: 'Button', Switch: 'Switch', Pill: 'Pill', DisclosureRow: 'DisclosureRow', Input: 'Input' }
   const client = registration.factory((id) => id === 'react' ? React : primitives)
   client.apply({
     effect(install) { const cleanup = install(); if (cleanup) cleanups.push(cleanup) },
@@ -219,94 +219,126 @@ async function skillFixture(t, { plugin = {}, skill = {}, standalone = false, wo
   disclosure.props.onToggle()
   const tree = fixture.expand(page.render())
   const row = nodes(tree, (node) => node.props.className === 'apm-skill')[0]
-  const menus = nodes(tree, (node) => node.type === 'Menu')
-  return { ...fixture, row, menus, tree }
+  const toggle = nodes(row, (node) => node.type === 'Switch')[0]
+  const pluginToggle = nodes(tree, (node) => node.type === 'Switch' && node.props.label === 'plugin')[0]
+  const reset = nodes(row, (node) => node.type === 'Button' && node.props.className === 'apm-reset-default')[0]
+  const pluginReset = nodes(tree, (node) => node.type === 'Button' && node.props['aria-label']?.endsWith(': plugin'))[0]
+  return { ...fixture, row, toggle, pluginToggle, reset, pluginReset, tree, render: () => fixture.expand(page.render()) }
 }
 
-test('inherited skill defaults never claim an uninstalled plugin skill is active', async (t) => {
+test('workspace switches show only the current effective state, not default provenance', async (t) => {
   const fixture = await skillFixture(t)
-  assert.match(text(fixture.row), /继承全局（全局默认开启）/)
-  assert.match(text(fixture.row), /未生效/)
-  assert.match(text(fixture.row), /所属插件未启用/)
-  assert.doesNotMatch(text(fixture.row), /全局已启用/)
-  const pluginMenu = fixture.menus.find((node) => node.props.anchor.props['aria-label'].startsWith('plugin:'))
-  assert.match(text(pluginMenu.props.anchor), /继承全局（全局未启用）/)
+  assert.equal(fixture.toggle.props.checked, false)
+  assert.equal(fixture.toggle.props.disabled, false)
+  assert.equal(fixture.pluginToggle.props.checked, false)
+  assert.match(text(fixture.row), /未启用/)
+  assert.doesNotMatch(text(fixture.row), /继承|全局|已生效|未生效|所属插件/)
+  assert.equal(fixture.reset, undefined)
   assert.match(fixture.css, /\.apm-plugin-topline\{[^}]*align-items:flex-start/)
-  assert.match(fixture.css, /\.apm-skill-status \.apm-skill-state\{[^}]*color:var\(--dsw-alias-label-secondary\)/)
 })
 
-test('inherited skills show active after workspace plugin enablement', async (t) => {
+test('enabled workspace skills use an on switch regardless of inherited configuration', async (t) => {
   const fixture = await skillFixture(t, { plugin: { enabled: true, workspaceOverride: true }, skill: { enabled: true } })
-  assert.match(text(fixture.row), /继承全局（全局默认开启）/)
-  assert.match(text(fixture.row), /已生效/)
-  assert.doesNotMatch(text(fixture.row), /未生效|所属插件未启用/)
+  assert.equal(fixture.toggle.props.checked, true)
+  assert.equal(fixture.pluginToggle.props.checked, true)
+  assert.match(text(fixture.row), /已启用/)
+  assert.doesNotMatch(text(fixture.row), /继承|全局|未启用/)
 })
 
-test('explicit skill enablement is active independently of an uninstalled plugin', async (t) => {
+test('individual enablement remains active without an installed plugin and has a secondary reset', async (t) => {
   const fixture = await skillFixture(t, { skill: { enabled: true, globalEnabled: false, workspaceOverride: true } })
-  assert.match(text(fixture.row), /仅此工作区启用/)
-  assert.match(text(fixture.row), /已生效/)
-  assert.doesNotMatch(text(fixture.row), /未生效|所属插件未启用/)
-})
-
-test('plugin-level workspace disablement explains why an enabled skill override is inactive', async (t) => {
-  const fixture = await skillFixture(t, { plugin: { installed: true, globalEnabled: true, workspaceOverride: false }, skill: { workspaceOverride: true } })
-  assert.match(text(fixture.row), /仅此工作区启用/)
-  assert.match(text(fixture.row), /未生效/)
-  assert.match(text(fixture.row), /所属插件已在此工作区禁用/)
-})
-
-test('skill workspace disablement is distinguished from a disabled global default', async (t) => {
-  const disabled = await skillFixture(t, { plugin: { enabled: true }, skill: { workspaceOverride: false } })
-  assert.match(text(disabled.row), /在此工作区禁用/)
-  assert.match(text(disabled.row), /未生效/)
-  assert.match(text(disabled.row), /技能已在此工作区禁用/)
-  const inherited = await skillFixture(t, { plugin: { enabled: true }, skill: { globalEnabled: false } })
-  assert.match(text(inherited.row), /继承全局（全局默认关闭）/)
-  assert.match(text(inherited.row), /未生效/)
-  assert.doesNotMatch(text(inherited.row), /所属插件未启用|技能已在此工作区禁用/)
-})
-
-test('standalone skill status has no plugin dependency and keeps its write routing', async (t) => {
-  const inactive = await skillFixture(t, { standalone: true, skill: { globalEnabled: false } })
-  assert.match(text(inactive.row), /未生效/)
-  assert.match(text(inactive.row), /全局默认关闭/)
-  const active = await skillFixture(t, { standalone: true, skill: { enabled: true, workspaceOverride: true } })
-  assert.match(text(active.row), /已生效/)
-  assert.doesNotMatch(text(active.row), /未生效|所属插件/)
-  await active.menus[0].props.onSelect('inherit')
-  assert.deepEqual(active.writes[0], {
+  assert.equal(fixture.toggle.props.checked, true)
+  assert.equal(fixture.toggle.props.disabled, false)
+  assert.equal(fixture.pluginToggle.props.checked, false)
+  assert.match(text(fixture.row), /已启用/)
+  assert.equal(text(fixture.reset), '恢复默认')
+  await fixture.reset.props.onClick()
+  assert.deepEqual(fixture.writes[0], {
     method: 'set-workspace-skill-enabled',
-    args: { workspaceId: 'workspace', fullName: 'market/standalone-skills/skill', mode: 'inherit', standalone: true },
+    args: { workspaceId: 'workspace', fullName: 'market/plugin/skill', mode: 'inherit' },
   })
 })
 
-test('skill and plugin menus preserve workspace override writes and reset', async (t) => {
-  const fixture = await skillFixture(t)
-  const skillMenu = fixture.menus.find((node) => node.props.anchor.props['aria-label'].startsWith('skill:'))
-  const pluginMenu = fixture.menus.find((node) => node.props.anchor.props['aria-label'].startsWith('plugin:'))
-  assert.equal(skillMenu.props.selectedId, 'inherit')
-  for (const mode of ['enabled', 'disabled', 'inherit']) {
-    await skillMenu.props.onSelect(mode)
-    await settle()
+test('a plugin-level disablement locks the skill switch at its effective off state', async (t) => {
+  const fixture = await skillFixture(t, { plugin: { installed: true, globalEnabled: true, workspaceOverride: false }, skill: { workspaceOverride: true } })
+  assert.equal(fixture.toggle.props.checked, false)
+  assert.equal(fixture.toggle.props.disabled, true)
+  assert.equal(fixture.toggle.props.title, '请先启用所属插件')
+  assert.ok(!fixture.pluginToggle.props.disabled)
+  assert.match(text(fixture.row), /未启用/)
+  assert.doesNotMatch(text(fixture.row), /所属插件|全局|继承/)
+  assert.equal(fixture.reset.props.disabled, false, 'a blocked skill can still clear its own override')
+})
+
+test('workspace-disabled and default-disabled skills have the same primary off state', async (t) => {
+  const disabled = await skillFixture(t, { plugin: { enabled: true }, skill: { workspaceOverride: false } })
+  const inherited = await skillFixture(t, { plugin: { enabled: true }, skill: { globalEnabled: false } })
+  for (const fixture of [disabled, inherited]) {
+    assert.equal(fixture.toggle.props.checked, false)
+    assert.equal(fixture.toggle.props.disabled, false)
+    assert.match(text(fixture.row), /未启用/)
+    assert.doesNotMatch(text(fixture.row), /全局|继承|原因/)
   }
-  await pluginMenu.props.onSelect('enabled')
-  assert.deepEqual(fixture.writes, [
-    ...['enabled', 'disabled', 'inherit'].map((mode) => ({ method: 'set-workspace-skill-enabled', args: { workspaceId: 'workspace', fullName: 'market/plugin/skill', mode } })),
-    { method: 'set-workspace-plugin-enabled', args: { workspaceId: 'workspace', marketId: 'market', pluginName: 'plugin', mode: 'enabled' } },
-  ])
+  assert.ok(disabled.reset)
+  assert.equal(inherited.reset, undefined)
 })
 
-test('workspace activation status and override copy follow the selected locale', async (t) => {
-  const fixture = await skillFixture(t, { locale: 'en' })
-  assert.match(text(fixture.row), /Inherit global \(global default on\)/)
-  assert.match(text(fixture.row), /Inactive/)
-  assert.match(text(fixture.row), /Plugin is not enabled/)
-  assert.doesNotMatch(text(fixture.row), /继承全局|未生效/)
+test('direct skill switches write workspace enable and disable without changing global defaults', async (t) => {
+  const off = await skillFixture(t)
+  await off.toggle.props.onChange(true)
+  const on = await skillFixture(t, { skill: { enabled: true } })
+  await on.toggle.props.onChange(false)
+  assert.deepEqual(off.writes, [{ method: 'set-workspace-skill-enabled', args: { workspaceId: 'workspace', fullName: 'market/plugin/skill', mode: 'enabled' } }])
+  assert.deepEqual(on.writes, [{ method: 'set-workspace-skill-enabled', args: { workspaceId: 'workspace', fullName: 'market/plugin/skill', mode: 'disabled' } }])
 })
 
-test('global uninstalled plugin skills retain the install prerequisite instead of workspace controls', async (t) => {
+test('direct plugin switches and secondary reset keep plugin write routing', async (t) => {
+  const fixture = await skillFixture(t, { plugin: { workspaceOverride: false } })
+  await fixture.pluginToggle.props.onChange(true)
+  await fixture.pluginToggle.props.onChange(false)
+  await fixture.pluginReset.props.onClick()
+  assert.deepEqual(fixture.writes, ['enabled', 'disabled', 'inherit'].map((mode) => ({
+    method: 'set-workspace-plugin-enabled',
+    args: { workspaceId: 'workspace', marketId: 'market', pluginName: 'plugin', mode },
+  })))
+})
+
+test('standalone switches and reset have no plugin prerequisite and preserve routing', async (t) => {
+  const fixture = await skillFixture(t, { standalone: true, skill: { enabled: true, workspaceOverride: true } })
+  assert.equal(fixture.toggle.props.checked, true)
+  assert.equal(fixture.toggle.props.disabled, false)
+  await fixture.toggle.props.onChange(false)
+  await fixture.reset.props.onClick()
+  assert.deepEqual(fixture.writes, ['disabled', 'inherit'].map((mode) => ({
+    method: 'set-workspace-skill-enabled',
+    args: { workspaceId: 'workspace', fullName: 'market/standalone-skills/skill', mode, standalone: true },
+  })))
+})
+
+test('in-flight and refused workspace changes never optimistically report an enabled skill', async (t) => {
+  const fixture = await skillFixture(t)
+  fixture.refuse()
+  const write = fixture.toggle.props.onChange(true)
+  const pending = fixture.render()
+  assert.ok(nodes(pending, (node) => node.type === 'Switch').every((node) => node.props.disabled))
+  assert.equal(nodes(pending, (node) => node.type === 'Switch' && node.props.label === 'skill')[0].props.checked, false)
+  await write
+  const refused = fixture.render()
+  assert.equal(nodes(refused, (node) => node.type === 'Switch' && node.props.label === 'skill')[0].props.checked, false)
+  assert.match(text(refused), /fixture write refused/)
+})
+
+test('current state, reset action and blocked tooltip follow the locale', async (t) => {
+  const fixture = await skillFixture(t, { locale: 'en', plugin: { workspaceOverride: false }, skill: { workspaceOverride: true } })
+  assert.match(text(fixture.row), /Disabled/)
+  assert.equal(text(fixture.reset), 'Restore default')
+  assert.equal(fixture.toggle.props.title, 'Enable the plugin first')
+  assert.doesNotMatch(text(fixture.row), /全局|继承|未启用|未生效/)
+})
+
+test('global uninstalled plugin skills retain the install prerequisite', async (t) => {
   const fixture = await skillFixture(t, { workspace: false })
   assert.match(text(fixture.row), /安装后可启用/)
-  assert.doesNotMatch(text(fixture.row), /全局默认开启|未生效|已生效/)
+  assert.equal(fixture.toggle, undefined)
+  assert.equal(fixture.reset, undefined)
 })
