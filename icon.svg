@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agent 插件市场</title>
+  <desc id="desc">靛蓝底色上，三枚白色模块与青绿色插接标记组成能力扩展网格。</desc>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="#4f46e5"/>
+  <g fill="#fff">
+    <rect x="14" y="14" width="15" height="15" rx="4"/>
+    <rect x="14" y="35" width="15" height="15" rx="4"/>
+    <rect x="35" y="35" width="15" height="15" rx="4"/>
+  </g>
+  <path d="M42.5 14.5v14m-7-7h14" fill="none" stroke="#99f6e4" stroke-width="5" stroke-linecap="round"/>
+</svg>
