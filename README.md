@@ -1,3 +1,5 @@
+<img src="./icon.svg" width="80" height="80" alt="Agent 插件市场图标">
+
 # dsh-agent-plugin-market
 
 DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场。它克隆市场仓库，按当前作用域中各插件技能和独立技能的实际启用状态，通过 DSH 技能 provider 原地提供这些技能。
