@@ -38,33 +38,56 @@ repository is not a standalone web application.
 - `package.json`: `@deepseek-ai/dsh-client-ui-primitives`,
   `@deepseek-ai/dsh-home-paths`, and `@deepseek-ai/schemastery` are required
   peer dependencies. `@deepseek-ai/dsh-hooks-codex` is an optional peer; when
-  absent, the UI shows the current-target profile `pnpm add` command for it and
+  absent, the UI shows the running-cohort profile `pnpm add` command for it and
   `@deepseek-ai/dsh-hook-protocol`.
+
+## DSH Upgrade and Compatibility Policy
+
+- Implement features and API adaptations against the latest selected target DSH
+  version. Keep historical-version support limited, but support at least the
+  immediately preceding release when its APIs can support the plugin simply.
+- Drop a historical version when its APIs no longer support the implementation
+  without complex compatibility code. Do not build elaborate bridges or parallel
+  implementations just to retain additional old versions; document the concrete
+  incompatibility and the resulting support boundary.
+- Across a `0.x` release-line transition, normally retain only the final minor /
+  patch release of the preceding `0.x` line rather than every release in that line.
+- If an older version's APIs remain fully compatible and need no adaptation, keep
+  declaring it supported regardless of its age; do not retire it merely because
+  it falls outside a rolling version window.
+- E2E must cover the latest target and representative supported historical
+  versions, including the immediately preceding supported release and meaningful
+  API boundaries. Keep every test installation on its own coherent DSH cohort.
+- Keep `engines.dsh`, dependency pins, CI coverage, runtime installation guidance,
+  and documentation consistent with the verified support set. Do not declare
+  unverified future versions compatible. Keep the plugin version plain SemVer,
+  without encoding the DSH target in a suffix.
 
 ## Development Rules
 
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies and CI target runtime `0.2.1-rc.2` (npm `next`;
-  `latest` remains the older `0.2.0-rc.2` cohort). Pin each DSH package
-  explicitly; individual subpackage dist-tags can still point to older cohorts.
-  `engines.dsh` declares exactly that runtime: lower versions are incompatible
-  and higher versions are not declared compatible. Keep the package version
-  plain SemVer without a DSH suffix, and change `engines.dsh` together with the
-  dependency cohort and CI target, never independently.
+- DSH development dependencies target `0.2.1-rc.3` (npm `next`;
+  `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
+  subpackage dist-tags can still point to older cohorts. `engines.dsh` currently
+  supports `0.2.1-rc.2 || 0.2.1-rc.3`; CI E2E covers both releases. Their consumed
+  APIs need no historical bridge. Apply the upgrade policy above when changing
+  this support set.
   The Host must inject both `connection` and `webServer`. The bundle patch must
   also add `webServer` to the `connection` provider row while retaining
   `webStartup`: Connection RPC getters retain the provider's shadow context.
   Test with separate sibling Connection and WebServer provider Fibers; providing
   the WebServer on the root Context hides this guard failure.
-- Keep CI smoke installs on one DSH release cohort with `.github/pin-dsh.cjs`
-  and a fresh step-local pnpm cache. Apply the hook to both `dlx` and profile
-  child installs; the plugin's wildcard peers and framework patch ranges can
-  drift even when the CLI pins its DSH dependencies. The smoke matrix varies
-  profile-local hooks dependencies, not runtime bridge availability: the official
-  CLI includes the bridge. Do not add the bridge to `dsh.profile.bundles`; it has
-  no bundle declaration. Cover actual bridge unavailability in Node tests.
+- Keep each CI smoke installation on one DSH release cohort with
+  `.github/pin-dsh.cjs` and a fresh step-local pnpm cache. Apply the hook to both
+  `dlx` and profile child installs; wildcard peers and framework patch ranges can
+  drift even when the CLI pins its DSH dependencies. Cross the supported runtime
+  versions with absent/present profile-local hooks dependencies, and verify actual
+  bridge availability through the authenticated market RPC instead of assuming
+  CLI dependencies are importable by profile plugins. Do not add the bridge to
+  `dsh.profile.bundles`; it has no bundle declaration. Retain Node downgrade tests
+  for bridge unavailability.
   Revalidate the Cordis 4.0.5 / Loader 1.0.6 / Include 1.0.10 companion baseline
   when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
@@ -125,7 +148,9 @@ end-to-end validation.
 pnpm lint
 pnpm test
 pnpm typecheck
-node --check lib/*.js test/*.test.js
+for file in lib/*.js test/*.test.js; do
+  node --check "$file" || exit
+done
 git diff --check
 ```
 

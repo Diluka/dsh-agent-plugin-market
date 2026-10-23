@@ -10,9 +10,7 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.2.1-rc.2
-  DSH_HOOKS_CODEX_VERSION: 0.2.1-rc.2
-  DSH_HOOK_PROTOCOL_VERSION: 0.2.1-rc.2
+  DSH_VERSION: 0.2.1-rc.3
 
 jobs:
   unit:
@@ -34,16 +32,22 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm typecheck
-      - run: node --check lib/*.js test/*.test.js
+      - run: |
+          for file in lib/*.js test/*.test.js; do
+            node --check "$file" || exit
+          done
       - run: git diff --check
 
   dsh-web-smoke:
-    name: 'DSH web smoke (profile hooks deps: ${{ matrix.profile-hooks }})'
+    name: 'DSH ${{ matrix.dsh-version }} web smoke (profile hooks deps: ${{ matrix.profile-hooks }})'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        dsh-version: [0.2.1-rc.2, 0.2.1-rc.3]
         profile-hooks: [absent, present]
+    env:
+      DSH_VERSION: ${{ matrix.dsh-version }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -81,11 +85,11 @@ jobs:
 
           profile="$DSH_HOME/profiles/web"
           mkdir -p "$profile"
-          # The CLI already supplies the bridge. This matrix varies only the
-          # profile's explicit dependencies; the bridge is not a bundle.
+          # Profile plugins must be able to import their optional bridge.
+          # Check both actual absence and explicit installation, not CLI inventory.
           packages=("$PLUGIN_TARBALL")
           if [ "$PROFILE_HOOKS" = present ]; then
-            packages+=("@deepseek-ai/dsh-hooks-codex@$DSH_HOOKS_CODEX_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_HOOK_PROTOCOL_VERSION")
+            packages+=("@deepseek-ai/dsh-hooks-codex@$DSH_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_VERSION")
           fi
           cat > "$profile/package.json" <<EOF
           {
@@ -126,6 +130,26 @@ jobs:
 
             if [ -n "$auth_url" ] && curl -fsSL -c "$cookie_jar" -b "$cookie_jar" "$auth_url" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
               kill -0 "$pid"
+              # A served shell alone does not prove the packed plugin activated.
+              state="$RUNNER_TEMP/market-state-$PROFILE_HOOKS.json"
+              curl -fsS -b "$cookie_jar" \
+                -H 'Content-Type: application/json' \
+                -H "Origin: http://127.0.0.1:$port" \
+                --data '{"type":"client-request","rpcId":"market-smoke","method":"get-state","payload":{}}' \
+                "http://127.0.0.1:$port/agent-plugin-market/get-state" >"$state"
+              node --input-type=module - "$state" <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          assert.equal(response.type, 'server-response')
+          assert.equal(response.rpcId, 'market-smoke')
+          assert.equal(response.result?.ok, true)
+          assert.deepEqual(response.result.value.markets, [])
+          assert.equal(response.result.value.scope.kind, 'global')
+          assert.equal(response.result.value.hooksBridge.available, process.env.PROFILE_HOOKS === 'present')
+          assert.equal(response.result.value.hooksBridge.installCommand,
+            `pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@${process.env.DSH_VERSION} @deepseek-ai/dsh-hook-protocol@${process.env.DSH_VERSION}`)
+          JS
               exit 0
             fi
 

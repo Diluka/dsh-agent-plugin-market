@@ -190,11 +190,11 @@ test('does not write global config through a symlink outside plugin storage', as
   assert.equal(await fs.readText(await fs.resolve('/outside/config.json')), 'unchanged')
 })
 
-test('bridge recovery guidance uses the target DSH cohort in state and enable errors', async () => {
-  const { devDependencies } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+test('bridge recovery guidance uses the installed DSH cohort in state and enable errors', async () => {
+  const { version } = JSON.parse(await readFile(new URL(import.meta.resolve('@deepseek-ai/dsh-home-paths/package.json')), 'utf8'))
   const command = 'pnpm --dir "$DSH_PROFILE_DIR" add'
-    + ' @deepseek-ai/dsh-hooks-codex@' + devDependencies['@deepseek-ai/dsh-hooks-codex']
-    + ' @deepseek-ai/dsh-hook-protocol@' + devDependencies['@deepseek-ai/dsh-hook-protocol']
+    + ' @deepseek-ai/dsh-hooks-codex@' + version
+    + ' @deepseek-ai/dsh-hook-protocol@' + version
   const service = createMarketService({
     runtime: runtimeFor({}),
     hooks: { available: false, async reconcile() {} },
