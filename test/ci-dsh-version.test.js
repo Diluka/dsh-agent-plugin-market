@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 
 const { hooks } = createRequire(import.meta.url)('../.github/pin-dsh.cjs')
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
@@ -18,20 +19,33 @@ function withVersion(version, run) {
   }
 }
 
-test('development dependencies, engines.dsh, and CI target one exact DSH runtime', () => {
+test('development dependencies and CI target a pinned cohort while E2E covers declared support', () => {
   assert.match(dshVersion, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
   for (const [name, version] of Object.entries(manifest.devDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, dshVersion, name)
   }
-  // Only the verified runtime is declared compatible: no past or future version.
-  assert.equal(manifest.engines?.dsh, dshVersion)
-  assert.match(manifest.engines.dsh, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
+  // List verified releases explicitly, including the previous supported runtime.
+  const supported = manifest.engines.dsh.split(' || ')
+  assert.ok(supported.includes(dshVersion))
+  assert.ok(supported.includes('0.2.1-rc.2'))
+  for (const version of supported) assert.match(version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
   // The package version stays plain SemVer and must not encode the DSH target.
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
-  for (const key of ['DSH_VERSION', 'DSH_HOOKS_CODEX_VERSION', 'DSH_HOOK_PROTOCOL_VERSION']) {
-    const value = workflow.match(new RegExp('^  ' + key + ': (\\S+)$', 'm'))?.[1]
-    assert.equal(value, dshVersion, key)
+  assert.equal(workflow.match(/^ {2}DSH_VERSION: (\S+)$/m)?.[1], dshVersion)
+  const smokeVersions = workflow.match(/^ {8}dsh-version: \[([^\]]+)\]$/m)?.[1].split(',').map(value => value.trim())
+  assert.deepEqual(smokeVersions, supported)
+  assert.match(workflow, /DSH_VERSION: \$\{\{ matrix\.dsh-version \}\}/)
+  assert.match(workflow, /@deepseek-ai\/dsh-hooks-codex@\$DSH_VERSION/)
+  assert.match(workflow, /@deepseek-ai\/dsh-hook-protocol@\$DSH_VERSION/)
+})
+
+test('DSH compatibility preflight accepts supported releases and rejects unverified versions', () => {
+  for (const version of ['0.2.1-rc.2', dshVersion]) {
+    assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
+  }
+  for (const version of ['0.2.0-rc.2', '0.2.1-rc.1', '0.2.1-rc.4', '0.2.1', '0.3.0']) {
+    assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
 
