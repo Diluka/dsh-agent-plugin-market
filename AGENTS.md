@@ -46,8 +46,8 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies and CI target runtime `0.2.1-rc.2` (npm `next`;
-  `latest` remains the older `0.2.0-rc.2` cohort). Pin each DSH package
+- DSH development dependencies and CI target runtime `0.2.1-rc.3` (npm `next`;
+  `latest` targets `0.2.1-rc.2`). Pin each DSH package
   explicitly; individual subpackage dist-tags can still point to older cohorts.
   `engines.dsh` declares exactly that runtime: lower versions are incompatible
   and higher versions are not declared compatible. Keep the package version
@@ -125,7 +125,9 @@ end-to-end validation.
 pnpm lint
 pnpm test
 pnpm typecheck
-node --check lib/*.js test/*.test.js
+for file in lib/*.js test/*.test.js; do
+  node --check "$file" || exit
+done
 git diff --check
 ```
 

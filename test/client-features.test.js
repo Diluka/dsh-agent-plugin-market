@@ -14,7 +14,7 @@ async function featureCard(snapshot, view = 'page') {
   const listeners = new Set()
   const cleanups = []
   const dictionaries = new Map()
-  // DSH 0.2.1-rc.2 ships LOCALE_IDS = ['zh', 'en'], not regional tags.
+  // DSH ships LOCALE_IDS = ['zh', 'en'], not regional tags.
   let localeSnapshot = { active: 'zh' }
   const form = {
     getSnapshot() { return snapshot },

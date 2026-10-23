@@ -35,6 +35,22 @@ test('development dependencies, engines.dsh, and CI target one exact DSH runtime
   }
 })
 
+test('installed DSH development packages and their required peers use the target cohort', () => {
+  const require = createRequire(import.meta.url)
+  for (const name of Object.keys(manifest.devDependencies)) {
+    if (!name.startsWith('@deepseek-ai/dsh-')) continue
+    const path = require.resolve(name + '/package.json')
+    const installed = JSON.parse(readFileSync(path, 'utf8'))
+    assert.equal(installed.version, dshVersion, name)
+    const packageRequire = createRequire(path)
+    for (const peer of Object.keys(installed.peerDependencies || {})) {
+      if (!peer.startsWith('@deepseek-ai/dsh-') || installed.peerDependenciesMeta?.[peer]?.optional) continue
+      const peerManifest = JSON.parse(readFileSync(packageRequire.resolve(peer + '/package.json'), 'utf8'))
+      assert.equal(peerManifest.version, dshVersion, name + ' peer ' + peer)
+    }
+  }
+})
+
 test('the smoke profile selects bundles without mounting the optional bridge library', () => {
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
   const bundles = JSON.parse(workflow.match(/"bundles":\s*(\[[^\n]*\])/)?.[1] || 'null')

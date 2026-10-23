@@ -10,9 +10,9 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.2.1-rc.2
-  DSH_HOOKS_CODEX_VERSION: 0.2.1-rc.2
-  DSH_HOOK_PROTOCOL_VERSION: 0.2.1-rc.2
+  DSH_VERSION: 0.2.1-rc.3
+  DSH_HOOKS_CODEX_VERSION: 0.2.1-rc.3
+  DSH_HOOK_PROTOCOL_VERSION: 0.2.1-rc.3
 
 jobs:
   unit:
@@ -34,7 +34,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm typecheck
-      - run: node --check lib/*.js test/*.test.js
+      - run: |
+          for file in lib/*.js test/*.test.js; do
+            node --check "$file" || exit
+          done
       - run: git diff --check
 
   dsh-web-smoke:
@@ -126,6 +129,24 @@ jobs:
 
             if [ -n "$auth_url" ] && curl -fsSL -c "$cookie_jar" -b "$cookie_jar" "$auth_url" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
               kill -0 "$pid"
+              # A served shell alone does not prove the packed plugin activated.
+              state="$RUNNER_TEMP/market-state-$PROFILE_HOOKS.json"
+              curl -fsS -b "$cookie_jar" \
+                -H 'Content-Type: application/json' \
+                -H "Origin: http://127.0.0.1:$port" \
+                --data '{"type":"client-request","rpcId":"market-smoke","method":"get-state","payload":{}}' \
+                "http://127.0.0.1:$port/agent-plugin-market/get-state" >"$state"
+              node --input-type=module - "$state" <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          assert.equal(response.type, 'server-response')
+          assert.equal(response.rpcId, 'market-smoke')
+          assert.equal(response.result?.ok, true)
+          assert.deepEqual(response.result.value.markets, [])
+          assert.equal(response.result.value.scope.kind, 'global')
+          assert.equal(response.result.value.hooksBridge.available, true)
+          JS
               exit 0
             fi
 
