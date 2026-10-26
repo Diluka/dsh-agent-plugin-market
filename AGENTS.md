@@ -71,9 +71,19 @@ repository is not a standalone web application.
 - DSH development dependencies target `0.2.1-rc.3` (npm `next`;
   `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
   subpackage dist-tags can still point to older cohorts. `engines.dsh` currently
-  supports `0.2.1-rc.2 || 0.2.1-rc.3`; CI E2E covers both releases. Their consumed
-  APIs need no historical bridge. Apply the upgrade policy above when changing
+  explicitly supports all seven published releases from `0.2.1-alpha.2` through
+  `alpha.5` and `rc.1` through `rc.3`; CI E2E covers every release crossed with
+  absent/present hooks dependencies. Their consumed APIs need no historical
+  bridge. Do not replace the explicit list with an open range or change `lib/`
+  merely to widen compatibility. Apply the upgrade policy above when changing
   this support set.
+  The unchanged bundle patch sets the Connection provider's inject list to
+  `[webStartup, webServer]`. Versions from `0.1.7-alpha.1` through
+  `0.2.1-alpha.1` still read `webRuntime` in the upstream Connection config
+  expression, so this override fails startup with `cannot get property
+  "webRuntime" without inject`, even though the consumed Host methods exist.
+  Versions before `0.1.7-alpha.1` also lack `settings.configure()`. Retain these
+  concrete boundaries instead of inferring compatibility from API names alone.
   The Host must inject both `connection` and `webServer`. The bundle patch must
   also add `webServer` to the `connection` provider row while retaining
   `webStartup`: Connection RPC getters retain the provider's shadow context.

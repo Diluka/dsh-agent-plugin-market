@@ -7,6 +7,11 @@ import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 const { hooks } = createRequire(import.meta.url)('../.github/pin-dsh.cjs')
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const dshVersion = manifest.devDependencies['@deepseek-ai/dsh-agent']
+// Verified published releases only; neither a rolling window nor an open range.
+const supportedVersions = [
+  '0.2.1-alpha.2', '0.2.1-alpha.3', '0.2.1-alpha.4', '0.2.1-alpha.5',
+  '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3',
+]
 
 function withVersion(version, run) {
   const previous = process.env.DSH_VERSION
@@ -26,8 +31,8 @@ test('development dependencies and CI target a pinned cohort while E2E covers de
   }
   // List verified releases explicitly, including the previous supported runtime.
   const supported = manifest.engines.dsh.split(' || ')
+  assert.deepEqual(supported, supportedVersions)
   assert.ok(supported.includes(dshVersion))
-  assert.ok(supported.includes('0.2.1-rc.2'))
   for (const version of supported) assert.match(version, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
   // The package version stays plain SemVer and must not encode the DSH target.
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
@@ -41,10 +46,10 @@ test('development dependencies and CI target a pinned cohort while E2E covers de
 })
 
 test('DSH compatibility preflight accepts supported releases and rejects unverified versions', () => {
-  for (const version of ['0.2.1-rc.2', dshVersion]) {
+  for (const version of supportedVersions) {
     assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
   }
-  for (const version of ['0.2.0-rc.2', '0.2.1-rc.1', '0.2.1-rc.4', '0.2.1', '0.3.0']) {
+  for (const version of ['0.1.6-alpha.2', '0.1.7-alpha.1', '0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.4', '0.2.1', '0.3.0']) {
     assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
