@@ -9,7 +9,7 @@ function currentContent(content) {
   return content && typeof content === 'object' && Object.prototype.hasOwnProperty.call(content, 'current') ? content.current : content
 }
 
-function hookFileFs(content, writes = []) {
+function hookFileFs(content, writes = [], options = {}) {
   const hookPath = '/markets/market/hooks/hooks.json'
   const normalize = (value) => path.normalize(String(value || '/'))
   const targetPath = (target) => normalize(typeof target === 'string' ? target : target.displayPath)
@@ -19,7 +19,7 @@ function hookFileFs(content, writes = []) {
       return { displayPath, targetKey: displayPath }
     },
     async lstat(target) {
-      if (targetPath(target) === hookPath && currentContent(content) !== null) return { type: 'file' }
+      if (targetPath(target) === hookPath && currentContent(content) !== null) return { type: options.hookType || 'file' }
       return null
     },
     async stat(target) {
@@ -45,7 +45,7 @@ function hookFileFs(content, writes = []) {
   }
 }
 
-function managerFixture({ hookContent, approvalFingerprint, bridge = null, plugin = () => ({ config: {}, dispose() {} }) }) {
+function managerFixture({ hookContent, approvalFingerprint, bridge = null, hookFsOptions, plugin = () => ({ config: {}, dispose() {} }) }) {
   let config = {
     markets: [{ id: 'market', repo: 'example/market' }],
     installed: { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } },
@@ -71,7 +71,7 @@ function managerFixture({ hookContent, approvalFingerprint, bridge = null, plugi
         title: 'plugin',
         description: '',
         skillSources: [],
-        hookConfigs: { codex: { declared: false, sources: [{ kind: 'path', path: './hooks/hooks.json' }], errors: [] } },
+        codexHooks: { declared: false, sources: [{ kind: 'path', path: './hooks/hooks.json' }], errors: [] },
       }
     },
     async ensureDir() {},
@@ -82,7 +82,7 @@ function managerFixture({ hookContent, approvalFingerprint, bridge = null, plugi
   }
   const manager = createCodexHookManager({
     ctx,
-    fs: hookFileFs(hookContent, writes),
+    fs: hookFileFs(hookContent, writes, hookFsOptions),
     bridge,
     runtime,
   })
@@ -185,3 +185,55 @@ test('reconcile clears stale mount errors when the hooks fingerprint changes', a
   assert.equal(fixture.manager.isActive('market/plugin'), false)
   assert.equal(fixture.manager.runtimeError('market/plugin'), null)
 })
+
+test('reconcile leaves unchanged mounts untouched and disposes removed approvals', async () => {
+  const hookConfig = { hooks: { PostToolUse: [] } }
+  const fingerprint = hookFingerprint({ sources: [{ source: './hooks/hooks.json', config: hookConfig }] })
+  let mounts = 0
+  let disposals = 0
+  const fixture = managerFixture({
+    hookContent: JSON.stringify(hookConfig),
+    approvalFingerprint: fingerprint,
+    bridge: function bridge() {},
+    plugin() {
+      mounts++
+      return { dispose() { disposals++ } }
+    },
+  })
+
+  await fixture.manager.reconcile()
+  assert.equal(mounts, 1)
+  assert.equal(fixture.writes.length, 1)
+
+  // Unchanged approved fingerprint: keep the running Fiber and generated config.
+  await fixture.manager.reconcile()
+  assert.equal(mounts, 1)
+  assert.equal(disposals, 0)
+  assert.equal(fixture.writes.length, 1)
+
+  // A removed approval disposes the mount without touching other state.
+  fixture.config.hookApprovals = {}
+  await fixture.manager.reconcile()
+  assert.equal(disposals, 1)
+  assert.equal(mounts, 1)
+  assert.equal(fixture.manager.isActive('market/plugin'), false)
+})
+
+for (const scenario of [
+  { name: 'a symlinked hook file', hookContent: JSON.stringify({ hooks: {} }), hookFsOptions: { hookType: 'symlink' } },
+  { name: 'invalid hooks JSON', hookContent: '{not json' },
+]) {
+  test(`reconcile revokes approval when ${scenario.name} is unusable`, async () => {
+    const fixture = managerFixture({
+      hookContent: scenario.hookContent,
+      approvalFingerprint: 'approved',
+      hookFsOptions: scenario.hookFsOptions,
+    })
+
+    await fixture.manager.reconcile()
+
+    assert.deepEqual(fixture.config.hookApprovals, {})
+    assert.equal(fixture.manager.isActive('market/plugin'), false)
+    assert.equal(fixture.saves.length, 1)
+  })
+}

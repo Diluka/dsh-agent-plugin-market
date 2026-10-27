@@ -29,7 +29,6 @@ function marketState(scope = { kind: 'workspace', id: workspace.id, title: works
         name: 'solo',
         fullName: 'market/standalone-skills/solo',
         description: 'solo skill',
-        whenToUse: null,
         globalEnabled: false,
         workspaceOverride: null,
         enabled: false,
@@ -37,9 +36,6 @@ function marketState(scope = { kind: 'workspace', id: workspace.id, title: works
       plugins: [{
         name: 'plugin',
         installed: true,
-        globalEnabled: true,
-        workspaceOverride: null,
-        enabled: true,
         activationState: 'enabled',
         unsupported: false,
         sourceType: 'local',
@@ -51,7 +47,6 @@ function marketState(scope = { kind: 'workspace', id: workspace.id, title: works
           name: 'owned',
           fullName: 'market/plugin/owned',
           description: 'owned skill',
-          whenToUse: null,
           globalEnabled: true,
           workspaceOverride: null,
           enabled: true,
@@ -122,7 +117,7 @@ test('market tools expose raw object-root parameter schemas', () => {
     assert.deepEqual(tool.parameters.properties.mode.enum, ['inherit', 'enabled', 'disabled'])
   }
   assert.match(plugin.description, /全部技能/)
-  assert.match(plugin.parameters.properties.mode.description, /全开.*全关.*全部父\/子覆盖/)
+  assert.match(plugin.parameters.properties.mode.description, /全开.*全关.*清除该插件全部子技能覆盖/)
   assert.match(skill.description, /其他技能保持原实际状态/)
   assert.match(skill.parameters.properties.mode.description, /全局实际状态/)
 })
@@ -215,16 +210,13 @@ test('skill tool detects standalone skills before writing workspace overrides', 
 })
 
 for (const scenario of [
-  { name: 'partial', activationState: 'partial', enabled: true, skills: [true, false], expected: 'partial', count: '1/2' },
-  { name: 'authoritative enabled field', activationState: 'enabled', enabled: false, skills: [true, true], expected: 'enabled', count: '2/2' },
-  { name: 'zero skills', activationState: 'disabled', enabled: true, skills: [], expected: 'disabled', count: '0/0' },
-  { name: 'legacy partial fallback', enabled: true, skills: [true, false], expected: 'partial', count: '1/2' },
-  { name: 'legacy empty fallback', enabled: true, skills: [], expected: 'disabled', count: '0/0' },
+  { name: 'partial activation', activationState: 'partial', skills: [true, false], expected: 'partial', count: '1/2' },
+  { name: 'activation state outranks the skill count', activationState: 'enabled', skills: [true, false], expected: 'enabled', count: '1/2' },
+  { name: 'zero skills stay disabled', activationState: 'disabled', skills: [], expected: 'disabled', count: '0/0' },
 ]) {
-  test(`market info renders aggregate activation separately from installation: ${scenario.name}`, async () => {
+  test(`market info renders Host activation state with an n/m skill count: ${scenario.name}`, async () => {
     const state = marketState()
     const plugin = state.markets[0].plugins[0]
-    plugin.enabled = scenario.enabled
     plugin.activationState = scenario.activationState
     const template = plugin.skills[0]
     plugin.skills = scenario.skills.map((enabled, index) => ({ ...template, name: 'skill-' + index, fullName: 'market/plugin/skill-' + index, enabled }))
@@ -235,7 +227,7 @@ for (const scenario of [
     const line = text.split('\n').find((line) => line.includes('插件 market/plugin:'))
     assert.ok(line)
     assert.ok(line.includes('effective=' + scenario.expected + ', skills=' + scenario.count + ', installed=true'))
-    assert.match(line, /parentOverride=inherit/)
+    assert.doesNotMatch(line, /parentOverride/)
     assert.equal(value.markets[0].plugins[0].installed, true)
   })
 }

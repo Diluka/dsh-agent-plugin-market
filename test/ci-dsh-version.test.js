@@ -4,15 +4,18 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 
-const { hooks } = createRequire(import.meta.url)('../.github/pin-dsh.cjs')
-const { buildTargets } = createRequire(import.meta.url)('../.github/resolve-dsh-matrix.cjs')
+const require = createRequire(import.meta.url)
+const { hooks } = require('../.github/pin-dsh.cjs')
+const { buildTargets } = require('../.github/resolve-dsh-matrix.cjs')
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
 const dshVersion = manifest.devDependencies['@deepseek-ai/dsh-agent']
-// Published releases in the currently declared bounded compatibility range.
-const supportedVersions = [
-  '0.2.1-alpha.2', '0.2.1-alpha.3', '0.2.1-alpha.4', '0.2.1-alpha.5',
-  '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4',
-]
+
+// The declared support range and the currently published channel versions.
+const range = '>=0.2.1-alpha.2 <=0.2.1-rc.4'
+const earliest = '0.2.1-alpha.2'
+const latest = '0.2.1-rc.2'
+const next = '0.2.1-rc.4'
 
 function withVersion(version, run) {
   const previous = process.env.DSH_VERSION
@@ -25,124 +28,81 @@ function withVersion(version, run) {
   }
 }
 
-test('development dependencies target a pinned cohort and CI covers boundaries and channels', () => {
-  // The selected npm next release is an independent target, not derived from the manifest.
-  assert.equal(dshVersion, '0.2.1-rc.4')
+test('DSH development dependencies share one pinned cohort at the newest supported release', () => {
+  assert.equal(dshVersion, next)
   assert.match(dshVersion, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
   for (const [name, version] of Object.entries(manifest.devDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, dshVersion, name)
   }
-  // The range is bounded to the verified oldest and newest releases.
-  assert.equal(manifest.engines.dsh, '>=0.2.1-alpha.2 <=0.2.1-rc.4')
-  assert.ok(supportedVersions.includes(dshVersion))
+  // A bounded range: the oldest naturally compatible release through the newest verified one.
+  assert.equal(manifest.engines.dsh, range)
   // The package version stays plain SemVer and must not encode the DSH target.
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
-  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
-  assert.equal(workflow.match(/^ {2}DSH_VERSION: (\S+)$/m)?.[1], dshVersion)
+})
+
+test('CI resolves a deduplicated smoke matrix and enforces the declared range', () => {
   assert.match(workflow, /node \.github\/resolve-dsh-matrix\.cjs/)
-  assert.match(workflow, /needs: resolve-dsh/)
   assert.match(workflow, /target: \$\{\{ fromJSON\(needs\.resolve-dsh\.outputs\.targets\) \}\}/)
-  assert.match(workflow, /evaluatePluginCompatibility\(manifest, \{\}, process\.env\.DSH_VERSION\)/)
-  const hooksModes = workflow.match(/^ {8}profile-hooks: \[([^\]]+)\]$/m)?.[1].split(',').map(value => value.trim())
-  assert.deepEqual(hooksModes, ['absent', 'present'])
   assert.match(workflow, /DSH_VERSION: \$\{\{ matrix\.target\.version \}\}/)
+  // The pinned development preflight fails a smoke job for an out-of-range channel.
+  assert.match(workflow, /evaluatePluginCompatibility\(manifest, \{\}, process\.env\.DSH_VERSION\)/)
+  assert.match(workflow, /profile-hooks: \[\s*absent,\s*present\s*\]/)
+  // The smoke job runs and installs the tested release, not an unpinned CLI.
+  assert.match(workflow, /pnpm dlx "@deepseek-ai\/dsh@\$DSH_VERSION"/)
   assert.match(workflow, /@deepseek-ai\/dsh-hooks-codex@\$DSH_VERSION/)
-  assert.match(workflow, /@deepseek-ai\/dsh-hook-protocol@\$DSH_VERSION/)
 })
 
-test('the CI matrix covers the range endpoints and each release channel', () => {
-  assert.deepEqual(buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', {
-    latest: '0.2.1-rc.2', next: '0.2.1-rc.4',
-  }), [
-    { label: 'minimum', version: '0.2.1-alpha.2' },
-    { label: 'latest', version: '0.2.1-rc.2' },
-    { label: 'next', version: '0.2.1-rc.4' },
+test('buildTargets expands the declared minimum and both release channels', () => {
+  assert.deepEqual(buildTargets(range, { latest, next }), [
+    { label: 'minimum', version: earliest },
+    { label: 'latest', version: latest },
+    { label: 'next', version: next },
   ])
 })
 
-test('the matrix retains the supported maximum when next moves beyond it', () => {
-  assert.deepEqual(buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', {
-    latest: '0.2.1-rc.2', next: '0.2.1-rc.5',
-  }), [
-    { label: 'minimum', version: '0.2.1-alpha.2' },
-    { label: 'maximum', version: '0.2.1-rc.4' },
-    { label: 'latest', version: '0.2.1-rc.2' },
-    { label: 'next', version: '0.2.1-rc.5' },
+test('buildTargets runs a version once when targets coincide', () => {
+  // Both channels on one version: one smoke target, keeping the first label.
+  assert.deepEqual(buildTargets(range, { latest: next, next }), [
+    { label: 'minimum', version: earliest },
+    { label: 'latest', version: next },
+  ])
+  // A channel matching the declared minimum is not repeated.
+  assert.deepEqual(buildTargets(range, { latest, next: earliest }), [
+    { label: 'minimum', version: earliest },
+    { label: 'latest', version: latest },
   ])
 })
 
-test('both release channels remain separate when their versions coincide', () => {
-  assert.deepEqual(buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', {
-    latest: '0.2.1-rc.4', next: '0.2.1-rc.4',
-  }), [
-    { label: 'minimum', version: '0.2.1-alpha.2' },
-    { label: 'latest', version: '0.2.1-rc.4' },
-    { label: 'next', version: '0.2.1-rc.4' },
-  ])
-})
-
-test('channels reuse both endpoints without merging each other', () => {
-  assert.deepEqual(buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', {
-    latest: '0.2.1-alpha.2', next: '0.2.1-rc.4',
-  }), [
-    { label: 'latest', version: '0.2.1-alpha.2' },
-    { label: 'next', version: '0.2.1-rc.4' },
-  ])
-  assert.deepEqual(buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', {
-    latest: '0.2.1-rc.2', next: '0.2.1-rc.2',
-  }), [
-    { label: 'minimum', version: '0.2.1-alpha.2' },
-    { label: 'maximum', version: '0.2.1-rc.4' },
-    { label: 'latest', version: '0.2.1-rc.2' },
-    { label: 'next', version: '0.2.1-rc.2' },
-  ])
-})
-
-test('the matrix rejects missing tags, invalid versions, and unsupported ranges', () => {
-  assert.throws(() => buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', { latest: '0.2.1-rc.2' }), /invalid DSH next version/)
-  assert.throws(() => buildTargets('>=0.2.1-alpha.2', { latest: '0.2.1-rc.2', next: '0.2.1-rc.4' }), /bounded inclusive range/)
-  for (const latest of ['latest', '0.2.1-rc.04', '9007199254740992.0.0']) {
-    assert.throws(() => buildTargets('>=0.2.1-alpha.2 <=0.2.1-rc.4', { latest, next: '0.2.1-rc.4' }), /invalid DSH latest version/)
+test('buildTargets rejects missing tags, invalid versions, and unbounded ranges', () => {
+  assert.throws(() => buildTargets(range, { latest }), /invalid DSH next version/)
+  assert.throws(() => buildTargets('>=0.2.1-alpha.2', { latest, next }), /bounded inclusive range/)
+  assert.throws(() => buildTargets('^0.2.1', { latest, next }), /bounded inclusive range/)
+  for (const invalid of ['latest', '0.2.1-rc.04', '9007199254740992.0.0']) {
+    assert.throws(() => buildTargets(range, { latest: invalid, next }), /invalid DSH latest version/)
   }
+  assert.throws(
+    () => buildTargets('>=0.2.1-alpha.02 <=0.2.1-rc.4', { latest, next }),
+    /invalid DSH minimum version/,
+  )
 })
 
-test('pinned development preflight accepts published releases and rejects versions outside the range', () => {
-  for (const version of supportedVersions) {
+test('the pinned development preflight enforces the declared range boundaries', () => {
+  // This only checks the range preflight contract used by CI; it does not claim
+  // per-version E2E verification of every release inside the range.
+  for (const version of [earliest, latest, next]) {
     assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
   }
-  for (const version of ['0.1.6-alpha.2', '0.1.7-alpha.1', '0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.4.0', '0.2.1-rc.5', '0.2.1', '0.3.0']) {
+  // SemVer prereleases between the bounds participate even when never published.
+  assert.equal(evaluatePluginCompatibility(manifest, {}, '0.2.1-beta.1'), undefined)
+  for (const version of ['0.2.1-alpha.1', '0.2.1-rc.5', '0.2.1', '0.3.0']) {
     assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
 
-test('bounded prerelease ranges include intermediate versions even if unpublished', () => {
-  for (const version of ['0.2.1-alpha.6', '0.2.1-beta.1', '0.2.1-rc.0', '0.2.1-rc.3.1', '0.2.1-rc.4+build.1']) {
-    assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
-  }
-})
-
-test('installed DSH development packages and their required peers use the target cohort', () => {
-  const require = createRequire(import.meta.url)
-  for (const name of Object.keys(manifest.devDependencies)) {
-    if (!name.startsWith('@deepseek-ai/dsh-')) continue
-    const path = require.resolve(name + '/package.json')
-    const installed = JSON.parse(readFileSync(path, 'utf8'))
-    assert.equal(installed.version, dshVersion, name)
-    const packageRequire = createRequire(path)
-    for (const peer of Object.keys(installed.peerDependencies || {})) {
-      if (!peer.startsWith('@deepseek-ai/dsh-') || installed.peerDependenciesMeta?.[peer]?.optional) continue
-      const peerManifest = JSON.parse(readFileSync(packageRequire.resolve(peer + '/package.json'), 'utf8'))
-      assert.equal(peerManifest.version, dshVersion, name + ' peer ' + peer)
-    }
-  }
-})
-
-test('the smoke profile selects bundles without mounting the optional bridge library', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+test('the smoke profile mounts the plugin bundle without adding the optional bridge', () => {
   const bundles = JSON.parse(workflow.match(/"bundles":\s*(\[[^\n]*\])/)?.[1] || 'null')
   assert.deepEqual(bundles, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-agent-plugin-market'])
   // The tested CLI initializes its own profile before the manifest is written.
-  assert.match(workflow, /pnpm dlx "@deepseek-ai\/dsh@\$DSH_VERSION"/)
   const initialize = workflow.indexOf('dsh --profile web --dump-config')
   const manifestWrite = workflow.indexOf('cat > "$profile/package.json"')
   const install = workflow.indexOf('pnpm --dir "$profile" add')

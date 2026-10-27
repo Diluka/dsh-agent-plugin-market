@@ -105,10 +105,6 @@ test('filters market catalog entries by mode and matching skill name', async () 
   assert.deepEqual(Array.from(matched.matches, (match) => match.plugin.name), ['available'])
   assert.deepEqual(Array.from(matched.visibleStandaloneSkills, (skill) => skill.name), ['root-search'])
   assert.equal(matched.matchingStandaloneSkillIds.has('market/standalone-skills/root-search'), true)
-
-  const missingCollections = catalog.catalogForMarket({}, '', 'all')
-  assert.equal(missingCollections.matches.length, 0)
-  assert.equal(missingCollections.visibleStandaloneSkills.length, 0)
 })
 
 test('counts only the market state represented by the catalog', async () => {
@@ -145,20 +141,19 @@ test('counts only the market state represented by the catalog', async () => {
   })
 })
 
-test('installed-resource filtering is independent of current activation', async () => {
+test('configuration sources derive only from each skill workspace override', async () => {
   const catalog = await loadCatalog()
-  const market = {
-    plugins: [
-      { name: 'global-disabled', installed: true, enabled: false, skills: [{ enabled: false }] },
-      { name: 'workspace-only', installed: false, enabled: true, skills: [{ enabled: true }] },
-    ],
-    standaloneSkills: [],
-  }
+  const inherited = { workspaceOverride: null }
+  const overridden = { workspaceOverride: false }
 
-  assert.equal(catalog.pluginEnabled(market.plugins[0]), false)
-  assert.equal(catalog.pluginEnabled(market.plugins[1]), true)
-  assert.deepEqual(Array.from(catalog.catalogForMarket(market, '', 'installed').matches, (match) => match.plugin.name), ['global-disabled'])
-  assert.equal(catalog.catalogStats([market]).installedPlugins, 1)
+  assert.equal(catalog.skillConfigurationSource(inherited), 'inherit')
+  assert.equal(catalog.skillConfigurationSource(overridden), 'override')
+  assert.equal(catalog.skillConfigurationSource({ workspaceOverride: true }), 'override')
+
+  assert.equal(catalog.pluginConfigurationSource({ skills: [] }), 'inherit')
+  assert.equal(catalog.pluginConfigurationSource({ skills: [inherited, inherited] }), 'inherit')
+  assert.equal(catalog.pluginConfigurationSource({ skills: [overridden, overridden] }), 'override')
+  assert.equal(catalog.pluginConfigurationSource({ skills: [inherited, overridden] }), 'partial')
 })
 
 test('normalizes workspace list snapshots for the scope selector', async () => {

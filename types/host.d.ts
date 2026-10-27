@@ -7,7 +7,7 @@ declare global {
   type MarketRefType = 'branch' | 'tag' | 'commit'
   type MarketInputRefType = 'default' | MarketRefType
   type WorkspaceOverrideMode = 'inherit' | 'enabled' | 'disabled'
-  type WorkspaceOverrideGroup = 'plugins' | 'pluginSkills' | 'standaloneSkills'
+  type WorkspaceOverrideGroup = 'pluginSkills' | 'standaloneSkills'
 
   interface MarketEntry {
     id: string
@@ -39,7 +39,6 @@ declare global {
 
   interface WorkspaceConfig {
     version: 1
-    plugins: Record<string, boolean>
     pluginSkills: Record<string, boolean>
     standaloneSkills: Record<string, boolean>
   }
@@ -243,7 +242,7 @@ declare global {
     title: string
     description: string
     skillSources: SkillSource[]
-    hookConfigs: { codex: CodexHookConfigs | null }
+    codexHooks: CodexHookConfigs | null
   }
 
   interface CodexHookConfigEntry {
@@ -275,7 +274,6 @@ declare global {
     name: string
     fullName: string
     description: string
-    whenToUse: string | null
     globalEnabled: boolean
     workspaceOverride: boolean | null
     enabled: boolean
@@ -289,15 +287,11 @@ declare global {
     active: boolean
     needsApproval: boolean
     error: string | null
-    scope: 'global'
   }
 
   interface HostMarketStatePlugin {
     name: string
     installed: boolean
-    globalEnabled: boolean
-    workspaceOverride: boolean | null
-    enabled: boolean
     activationState: 'enabled' | 'partial' | 'disabled'
     unsupported: boolean
     sourceType: string

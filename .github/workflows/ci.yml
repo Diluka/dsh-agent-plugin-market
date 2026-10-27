@@ -10,7 +10,6 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.2.1-rc.4
 
 jobs:
   resolve-dsh:

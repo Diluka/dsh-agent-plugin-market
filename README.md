@@ -14,18 +14,11 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 ## 安装
 
-当前开发依赖和适配目标为 DSH `0.2.1-rc.4`（当前 npm `next` 发布线；`latest` 指向 `0.2.1-rc.2`）。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
+当前开发依赖和适配目标为 DSH `0.2.1-rc.4`（当前 npm `next` 发布线；`latest` 指向 `0.2.1-rc.2`）。npm `latest` 与 `next` 是必须兼容的版本。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
-包的 `engines.dsh` 使用封顶范围 `>=0.2.1-alpha.2 <=0.2.1-rc.4`，覆盖以下 **8 个已发布版本**。它们均兼容当前插件实现，无需历史 API 桥接或修改业务代码。CI 重点覆盖区间两端及当前 npm `latest`、`next`，不逐版启动所有中间版本。DSH 按 SemVer 将预发布版本纳入比较，因此范围也会接受两端之间可能补发的版本；`rc.5` 和正式版 `0.2.1` 等上界以后的版本不会自动放行。
+包的 `engines.dsh` 使用封顶范围 `>=0.2.1-alpha.2 <=0.2.1-rc.4`。`latest` 与 `next` 必须实测兼容；范围内其他已发布版本“随缘兼容”，能延伸多远就延伸多远，不为其引入兼容桥接或业务分支。当前代码自然支持的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。`alpha.2` 和 `alpha.3` 的预检只读取 DSH peer dependencies，不强制检查 `engines.dsh`；不要依赖旧运行时自动拒绝范围外的版本。
 
-| DSH 发布线 | 支持版本 |
-| --- | --- |
-| `0.2.1` alpha | `0.2.1-alpha.2`、`0.2.1-alpha.3`、`0.2.1-alpha.4`、`0.2.1-alpha.5` |
-| `0.2.1` rc | `0.2.1-rc.1`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4` |
-
-不改现有实现和 composition 的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。`alpha.2` 和 `alpha.3` 的预检只读取 DSH peer dependencies，不强制检查 `engines.dsh`；不要依赖旧运行时自动拒绝范围外的版本。
-
-历史支持以实际 API 和 composition 兼容为边界，不为保留更多旧版引入复杂桥接；完全兼容且不需适配的旧版不因年代久远而淘汰。跨 `0.x` 发布线时，通常仅保留上一线最后的小版本。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；升级时同步兼容声明、开发依赖、代表性历史版本的 E2E 和文档，具体策略见 [开发规范](<AGENTS.md#dsh-upgrade-and-compatibility-policy>)。
+CI 只验证声明范围的**最早版本**、npm `latest` 和 npm `next`，按版本去重；同一版本不会重复启动。`next` 超出上界时对应 smoke job 的预检会失败并提示重新适配，不保留未经验证的上界目标。DSH 按 SemVer 将预发布版本纳入比较，因此范围也会接受两端之间可能补发的版本；`rc.5` 和正式版 `0.2.1` 等上界以后的版本不会自动放行。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；升级时同步兼容声明、开发依赖、代表性 smoke 目标和文档，具体策略见 [开发规范](<AGENTS.md#dsh-upgrade-and-compatibility-policy>)。
 
 在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后从工作区列表上方的「技能与挂钩」或设置页同名区段管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
@@ -39,7 +32,7 @@ Codex bridge 必须能从插件的实际安装环境导入，不能因 CLI 清�
 pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.2.1-rc.4 @deepseek-ai/dsh-hook-protocol@0.2.1-rc.4
 ```
 
-其他受支持版本使用设置页显示的同版本命令，例如 `alpha.2` 使用 `@0.2.1-alpha.2`，`rc.2` 使用 `@0.2.1-rc.2`。安装后按运行时提示重载；若提示必须重启，再重启 DSH。bridge 是可选运行时依赖，不是可从侧边栏「插件」独立安装或加入 profile bundle 列表的 bundle。
+其他受支持版本使用设置页按当前运行版本显示的同版本命令。安装后按运行时提示重载；若提示必须重启，再重启 DSH。bridge 是可选运行时依赖，不是可从侧边栏「插件」独立安装或加入 profile bundle 列表的 bundle。
 
 通过 `link:` 在本地调试时，插件实际加载的 bridge 可能来自仓库中的开发依赖，而不是 profile 中显式安装的依赖。应核对运行中 DSH 与插件实际解析的依赖是否属于同一版本组；仅修改 profile 依赖不一定会替换实际加载的 bridge。
 
@@ -50,13 +43,13 @@ pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.2.1-rc.4 @deeps
 3. **安装插件**：市场清单的每项插件由 `source` 指向市场内的插件目录；未声明 `source` 时使用仓库根目录。字符串 `source` 和 `{"source":"local","path":"<仓库内路径>"}` 都可用；`./` 指向仓库根。`{"source":"url","url":"..."}` 仅在 URL 规范化后等于当前市场仓库时被视为仓库根插件，其他 URL 来源会标记为不支持。所有路径都必须解析在市场根目录内。
 4. **更新市场**：Host 启动时会依次对默认分支和分支引用执行 `git pull --ff-only`；失败只记录错误并继续其他市场。标签和 commit 是固定引用，手动或自动更新都会跳过。更新按钮复用相同逻辑。
 5. **管理技能**：全局和工作区使用同款技能开关，直接显示当前作用域的实际状态。插件技能总控使用复选框，显示「全部启用／部分启用／全部关闭」和启用数量 `n/m`；半选表示只有部分技能开启。点击总控会将该插件全部技能统一设为开或关，单项操作只改变自身，其他技能的实际状态不变。全局切换插件技能前需要先安装；「安装插件／卸载插件」是独立的全局资源按钮，不是技能总控。全部关闭技能后插件仍已安装，单项和总控仍可操作，也不会改动 hooks 审批或挂载。根 `skills/` 中未被插件引用的技能需要显式启用，支持逐项或整组切换。
-6. **工作区覆盖**：在工作区列表的项目操作菜单中点击「配置插件与技能」打开该工作区的配置弹窗；设置页的「配置作用域」也可切换全局默认或工作区视图。工作区技能以只读、中性色 Pill 小标记显示「继承／覆盖」：有自身布尔覆盖，或受插件旧父级布尔覆盖影响时显示「覆盖」，否则显示「继承」。技能组没有覆盖时标记「继承」，仅部分子项有覆盖时标记「部分覆盖」，全部子项有覆盖或存在旧父级布尔覆盖时标记「覆盖」。全局没有上级，不显示来源标记。这些标记只说明来源，与开关实际状态、总控半选及 `n/m` 独立，不是恢复或切换操作。工作区目标值与该技能全局实际生效值相同时，自动删除本地覆盖，之后全局继续接管；只有不同的值才保存覆盖，整组全部匹配时清除该组覆盖。UI 不提供「恢复默认」或「全部恢复默认」按钮。旧父级覆盖会在技能组或单项操作时被规范化；单项操作先保留其他技能当前实际状态，再只更改目标，不会恢复被父级隐藏的旧偏好。单个技能也可在插件未全局安装时独立开启，不改变全局安装状态。市场添加、修改引用、更新和移除仍属于全局操作。
+6. **工作区覆盖**：在工作区列表的项目操作菜单中点击「配置插件与技能」打开该工作区的配置弹窗；设置页的「配置作用域」也可切换全局默认或工作区视图。工作区技能以只读、中性色 Pill 小标记显示「继承／覆盖」：该技能有自身布尔覆盖时显示「覆盖」，否则显示「继承」。技能组没有子项覆盖时标记「继承」，仅部分子项有覆盖时标记「部分覆盖」，全部子项有覆盖时标记「覆盖」。全局没有上级，不显示来源标记。这些标记只说明来源，与开关实际状态、总控半选及 `n/m` 独立，不是恢复或切换操作。工作区目标值与该技能全局实际生效值相同时，自动删除本地覆盖，之后全局继续接管；只有不同的值才保存覆盖，整组全部匹配时清除该组覆盖。UI 不提供「恢复默认」或「全部恢复默认」按钮。单项操作只写入或删除目标技能自身的覆盖，不重写其他技能；技能组操作按全局实际值重建该组差异。单个技能也可在插件未全局安装时独立开启，不改变全局安装状态。市场添加、修改引用、更新和移除仍属于全局操作。
 7. **管理 hooks**：已安装且声明 Codex hooks 的插件初始未授权。bridge 可用时，第一次点击开关只显示确认，第二次点击才保存当前配置指纹并尝试挂载。授权状态和已挂载状态分别显示。hooks 和其审批在当前版本仍为全局配置，不因全部关闭技能而被隐藏或禁用。
-8. **代理工具**：代理可调用 `agent_market_info` 查看市场、资源安装状态、技能组的全开／部分／全关状态、技能明细、hooks、工作区和当前作用域；可调用 `agent_market_set_plugin` 统一设置某个插件的工作区全部技能；可调用 `agent_market_set_skill` 只设置某个技能。两个写入工具默认使用当前会话 `cwd` 匹配到的工作区，也接受 `workspace_id`；`enabled/disabled` 指定目标实际值，不保证保留显式覆盖，`inherit` 作为高级工具/API 操作仍兼容。home 路径会话不可使用这些工具。参数和返回作用见[代理市场工具](<docs/agent-tools.md>)。
+8. **代理工具**：代理可调用 `agent_market_info` 查看市场、资源安装状态、技能组的全开／部分／全关状态、技能明细、hooks、工作区和当前作用域；可调用 `agent_market_set_plugin` 统一设置某个插件的工作区全部技能；可调用 `agent_market_set_skill` 只设置某个技能。两个写入工具默认使用当前会话 `cwd` 匹配到的工作区，也接受 `workspace_id`；`enabled/disabled` 指定目标实际值，不保证保留显式覆盖；`inherit` 仍是高级工具/API 操作，UI 不提供恢复默认按钮。home 路径会话不可使用这些工具。参数和返回作用见[代理市场工具](<docs/agent-tools.md>)。
 
 管理页面将操作绑定到已加载且与当前选择匹配的作用域快照。同一作用域内保存后就地刷新，不卸载目录，保留滚动位置、筛选和展开状态；刷新失败时保留上次内容并提供重试，但禁用过期数据的写入。真正切换作用域后，在对应快照加载完成前不会展示旧作用域的可写控件；加载失败可以重试。旧作用域或乱序返回的读取不能覆盖新的作用域快照，也不能让写入前的旧状态盖掉写入后的显示；页面卸载后不再接受未完成请求的结果。
 
-插件状态按当前作用域的实际子技能聚合：`activationState` 为 `enabled`（全开）、`partial`（部分开启）或 `disabled`（全关，零技能也为全关）；`enabled` 只表示至少一个子技能开启，`installed` 独立表示全局资源已安装。同名且受支持的多个清单来源共享一个插件控制，合并技能并按全名去重。插件技能组批量启停与工作区插件技能单项修改都先严格完整扫描该组来源，目录缺失、越界或读取失败时拒绝保存，不产生父级或部分子项修改。
+插件状态按当前作用域的实际子技能聚合：`activationState` 为 `enabled`（全开）、`partial`（部分开启）或 `disabled`（全关，零技能也为全关）；`installed` 独立表示全局资源已安装。同名且受支持的多个清单来源共享一个插件控制，合并技能并按全名去重。插件技能组批量启停与工作区插件技能单项修改都先严格完整扫描该组来源，目录缺失、越界或读取失败时拒绝保存；批量操作按全局实际值重建该组覆盖，单项操作只写入目标技能。
 
 市场清单查找顺序如下：
 
@@ -141,7 +134,7 @@ whenToUse: 可选补充。
 
 Host 写入全局配置时显式使用以 `agent-plugin-market` 为边界的 `workspace-write` 策略；写入生成的 bridge 配置时以 `generated-hooks` 为边界。这些插件自有状态写入不依赖某个代理会话的工作目录，也不提升会话权限。沙盒文件系统仍会校验解析后的目标，拒绝超出可写根集合的符号链接；该集合包括对应存储目录及 DSH 允许的平台临时目录。
 
-每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。运行时写入 `version: 1`，并保留 `plugins`、`pluginSkills` 和 `standaloneSkills` 三组布尔覆盖的读取兼容性。当前插件总控与单项操作不再写入 `plugins` 父级覆盖，而是在完整校验插件技能组后移除该插件旧父/子覆盖，按各技能与全局实际生效值的差异重建 `pluginSkills`；独立技能同样在与全局相等时删除 `standaloneSkills` 的对应键。未安装插件的全局实际技能值为关闭，而非仅看技能自身的全局禁用标记。没有覆盖的项继续跟随以后全局的变化；旧父级及隐藏子项偏好不会在规范化时意外启用其他技能。高级 `inherit` 和清空工作区覆盖 API 仍保留，不对应 UI 恢复按钮。
+每个工作区的覆盖文件是 `<workspace>/.dsh/agent-plugin-market.json`。运行时写入 `version: 1`，只使用 `pluginSkills` 和 `standaloneSkills` 两组稀疏布尔覆盖；未知字段与旧版的 `plugins` 父级键会被忽略。插件总控在完整校验该插件技能组后，按各技能与全局实际生效值的差异重建 `pluginSkills`；单项操作只写入或删除目标技能自身的键；独立技能同样在与全局相等时删除 `standaloneSkills` 的对应键。未安装插件的全局实际技能值为关闭，而非仅看技能自身的全局禁用标记。没有覆盖的项继续跟随以后全局的变化。`inherit` 作为高级工具/API 操作仍保留，UI 不提供恢复默认按钮。
 
 设置页和代理写入工具都使用同一个工作区覆盖文件。工作区文件可以按团队需要提交到版本控制或加入忽略规则。为避免目录逃逸，`.dsh` 目录和配置文件都不能是符号链接；用户 home 目录本身不作为工作区覆盖根，避免和全局配置目录混用。市场克隆、hooks 和 hooks 审批仍保存在 `<dsh-home>`。
 
@@ -165,7 +158,7 @@ git diff --check
 - `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
 - `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
 - `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
-- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。开发依赖和实际安装的必需 DSH peers 统一到目标 `rc.4`；单元测试使用该版本的 preflight 校验已发布版本及区间边界，这只检验版本匹配，不代表每个历史版本都以相同方式强制检查 `engines.dsh`。每次 CI 先从 npm 一次解析 `@deepseek-ai/dsh` 的 `latest`、`next`，分别测试两个渠道，并覆盖当前有界范围的两端；端点与渠道版本相同时复用渠道测试。每次 smoke 安装独立固定本插件的通配 peer 和框架 patch 范围，避免版本组混用或安装漂移。Smoke job 先用对应版本的 DSH CLI 初始化临时 profile，再通过 pnpm 安装制品并应用包内的 Cordis patch；完成浏览器会话认证后调用市场 `get-state` RPC，确认打包插件已激活，而不只检查 Web 首页可达。当前矩阵为 `3 个目标版本 × hooks 依赖 absent/present`：下界 `alpha.2`、`latest` 的 `rc.2` 和同时作为上界的 `next` 的 `rc.4`。两个渠道分别保留，即使标签指向同一版本也各自测试；渠道超出声明范围时对应测试会失败，提示重新适配，而不会自动扩大支持范围。测试通过实际 RPC 状态验证 profile 未显式安装 bridge 时的不可用状态及显式安装后的可用性，并检查恢复安装命令匹配当前测试运行时；不可用只表示导入失败，不能断定原因一定是缺包。Node 测试继续覆盖审批保留和不挂载 hooks 的降级行为。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
+- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。开发依赖统一到目标 `rc.4`；单元测试使用该版本的 preflight 校验版本匹配，不代表每个历史版本都以相同方式强制检查 `engines.dsh`。每次 CI 从 npm 一次解析 `@deepseek-ai/dsh` 的 `latest`、`next`，与声明范围的最早版本按版本去重后作为 smoke 目标；当前为 `alpha.2`、`latest` 的 `rc.2` 和 `next` 的 `rc.4`，同一版本只启动一次。目标版本超出声明范围时对应 smoke job 的预检会失败，提示重新适配，而不会自动扩大支持范围。每次 smoke 安装独立固定本插件的通配 peer 和框架 patch 范围，避免版本组混用或安装漂移。Smoke job 先用对应版本的 DSH CLI 初始化临时 profile，再通过 pnpm 安装制品并应用包内的 Cordis patch；完成浏览器会话认证后调用市场 `get-state` RPC，确认打包插件已激活，而不只检查 Web 首页可达。测试通过实际 RPC 状态验证 profile 未显式安装 bridge 时的不可用状态及显式安装后的可用性，并检查恢复安装命令匹配当前测试运行时；不可用只表示导入失败，不能断定原因一定是缺包。Node 测试继续覆盖审批保留和不挂载 hooks 的降级行为。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
 
 ## 架构
 
@@ -177,10 +170,10 @@ git diff --check
 | Host features | `lib/market-features.js` | 注册 DSH 功能设置，按开关管理工具和简短系统提示词的生命周期。 |
 | Host tools | `lib/market-tools.js` | 定义市场状态读取、工作区插件/技能覆盖工具及其用法提示，并为 home 路径会话做 scoped restriction。 |
 | Host config model | `lib/market-config.js` | 纯配置状态转换：市场、插件安装、全局技能开关与工作区覆盖解析。 |
-| Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
-| Host hook plan | `lib/hook-reconcile-plan.js` | 纯 desired/active 差异计划，确定处置和挂载顺序。 |
+| Host Codex adapter | `lib/codex-hook-manager.js` | 检查 hooks 来源，按 desired/active 指纹差异生成处置与挂载计划，协调审批，生成 bridge 配置并管理 Fiber 生命周期。 |
 | Host hook helper | `lib/codex-hooks.js` | 解析 hooks 来源和相对路径，计算指纹，生成稳定存储键并注入 command 环境。 |
+| Host util | `lib/util.js` | 仅用于日志和运行错误状态的内部错误消息提取，不承载业务文案。 |
 | Client | `lib/client.js` | 浏览器入口，注册插件「功能」配置、可配置显示的「技能与挂钩」侧边栏面板、复用同一页面的设置区段和工作区配置弹窗；文件内拆分目录模型、共享控件与页面实现。 |
 | Profile composition | `cordis.patch.yml` | 将双端插件包插入 web profile。 |
 
-Hook 元数据按协议键存入 `hookConfigs`；当前实现只挂载 `codex` 适配器。
+插件清单解析直接产出 `codexHooks`；当前实现只挂载 `codex` 适配器。

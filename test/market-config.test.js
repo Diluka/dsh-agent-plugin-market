@@ -3,18 +3,16 @@ import test from 'node:test'
 
 import {
   addMarketToConfig,
-  clearWorkspacePluginOverrides,
+  clearPluginSkillOverrides,
   emptyWorkspaceConfig,
   installPluginInConfig,
   normalizeWorkspaceConfig,
-  pluginEnabled,
   pluginSkillEnabled,
   removeMarketFromConfig,
   setMarketRefInConfig,
   setPluginSkillsEnabledInConfig,
   setSkillEnabledInConfig,
   setStandaloneSkillsEnabledInConfig,
-  setWorkspacePluginOverride,
   setWorkspacePluginSkillOverride,
   setWorkspacePluginSkillStatesInConfig,
   setWorkspaceStandaloneSkillOverride,
@@ -115,15 +113,14 @@ for (const { key, ownSkills, otherKey, otherSkills } of [
     const flags = Object.fromEntries([...ownSkills, ...otherSkills, 'other/p/a'].map((name) => [name, false]))
     const workspace = {
       version: 1,
-      plugins: { [key]: false, [otherKey]: true },
       pluginSkills: flags,
       standaloneSkills: { 'm/standalone-skills/keep': true },
     }
     const snapshot = structuredClone(workspace)
     const expectedFlags = { ...flags }
     for (const name of ownSkills) delete expectedFlags[name]
-    assert.deepEqual(clearWorkspacePluginOverrides(workspace, key), {
-      ...workspace, plugins: { [otherKey]: true }, pluginSkills: expectedFlags,
+    assert.deepEqual(clearPluginSkillOverrides(workspace, key), {
+      ...workspace, pluginSkills: expectedFlags,
     })
     assert.deepEqual(workspace, snapshot)
 
@@ -182,30 +179,25 @@ test('skill toggles preserve opposite default states and batch scope', () => {
   assert.equal(batchDisabled.enabledStandaloneSkills['two/standalone-skills/skill'], true)
 })
 
-test('workspace overrides take precedence while sparse values inherit global defaults', () => {
+test('workspace skill overrides take precedence while unset values inherit global defaults', () => {
   const global = configFixture()
   const pluginKey = 'one/plugin'
   const pluginSkill = 'one/plugin/skill'
   const standaloneSkill = 'one/standalone-skills/skill'
   const inherited = emptyWorkspaceConfig()
   const workspace = setWorkspaceStandaloneSkillOverride(
-    setWorkspacePluginSkillOverride(
-      setWorkspacePluginOverride(inherited, pluginKey, 'disabled'),
-      pluginSkill,
-      'enabled',
-    ),
+    setWorkspacePluginSkillOverride(inherited, pluginSkill, 'enabled'),
     standaloneSkill,
-    'enabled',
+    'disabled',
   )
 
-  assert.equal(pluginEnabled(global, inherited, pluginKey), true)
   assert.equal(pluginSkillEnabled(global, inherited, pluginKey, pluginSkill), false)
   assert.equal(standaloneSkillEnabled(global, inherited, standaloneSkill), true)
-  assert.equal(pluginEnabled(global, workspace, pluginKey), false)
-  assert.equal(pluginSkillEnabled(global, workspace, pluginKey, pluginSkill), false)
-  assert.equal(standaloneSkillEnabled(global, workspace, standaloneSkill), true)
-  assert.equal(workspaceOverride(workspace, 'plugins', pluginKey), false)
-  assert.equal(workspaceOverrideCount(workspace), 3)
+  assert.equal(pluginSkillEnabled(global, workspace, pluginKey, pluginSkill), true)
+  assert.equal(standaloneSkillEnabled(global, workspace, standaloneSkill), false)
+  assert.equal(workspaceOverride(workspace, 'pluginSkills', pluginSkill), true)
+  assert.equal(workspaceOverride(workspace, 'standaloneSkills', standaloneSkill), false)
+  assert.equal(workspaceOverrideCount(workspace), 2)
 })
 
 test('workspace override reset follows later global changes without mutating global config', () => {
@@ -235,13 +227,10 @@ test('plugin skill workspace override wins over an uninstalled plugin base', () 
   const inherited = emptyWorkspaceConfig()
   const enabled = setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'enabled')
   const disabled = setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'disabled')
-  const pluginDisabled = setWorkspacePluginOverride(setWorkspacePluginSkillOverride(emptyWorkspaceConfig(), fullName, 'enabled'), pluginKey, 'disabled')
 
-  assert.equal(pluginEnabled(global, inherited, pluginKey), false)
   assert.equal(pluginSkillEnabled(global, inherited, pluginKey, fullName), false)
   assert.equal(pluginSkillEnabled(global, enabled, pluginKey, fullName), true)
   assert.equal(pluginSkillEnabled(global, disabled, pluginKey, fullName), false)
-  assert.equal(pluginSkillEnabled(global, pluginDisabled, pluginKey, fullName), false)
 })
 
 test('plugin batch activation only changes the scanned disabled skills, not installation or hooks', () => {
@@ -263,12 +252,11 @@ test('plugin batch activation only changes the scanned disabled skills, not inst
   assert.deepEqual(original, snapshot)
 })
 
-test('workspace group serialization removes legacy gates and stores only actual global differences', () => {
+test('workspace group serialization rebuilds the group from actual global differences', () => {
   const global = configFixture()
   const key = 'one/plugin'
   const workspace = {
     version: 1,
-    plugins: { [key]: false, 'two/plugin': true, 'one/plugin-extra': false },
     pluginSkills: {
       'one/plugin/skill': true, 'one/plugin/other': false, 'one/plugin/stale': true,
       'two/plugin/skill': true, 'one/plugin-extra/keep': true,
@@ -281,7 +269,6 @@ test('workspace group serialization removes legacy gates and stores only actual 
 
   assert.deepEqual(next, {
     version: 1,
-    plugins: { 'two/plugin': true, 'one/plugin-extra': false },
     pluginSkills: { 'one/plugin/other': false, 'two/plugin/skill': true, 'one/plugin-extra/keep': true },
     standaloneSkills: workspace.standaloneSkills,
   })
@@ -292,43 +279,73 @@ test('workspace group serialization removes legacy gates and stores only actual 
   const matching = setWorkspacePluginSkillStatesInConfig(global, next, key, [
     { fullName: 'one/plugin/skill', enabled: false }, { fullName: 'one/plugin/other', enabled: true },
   ])
-  assert.deepEqual(matching, clearWorkspacePluginOverrides(workspace, key))
+  assert.deepEqual(matching, clearPluginSkillOverrides(workspace, key))
   const changedGlobal = setPluginSkillsEnabledInConfig(global, desired, false)
   assert.equal(pluginSkillEnabled(changedGlobal, matching, key, 'one/plugin/other'), false)
 })
 
-test('workspace normalization compares against uninstalled global effective false, not raw skill defaults', () => {
+test('workspace serialization compares against uninstalled global effective false', () => {
   const global = configFixture()
   delete global.installed['one/plugin']
   const states = [
     { fullName: 'one/plugin/skill', enabled: false },
     { fullName: 'one/plugin/other', enabled: false },
   ]
-  const current = setWorkspacePluginOverride(emptyWorkspaceConfig(), 'one/plugin', 'enabled')
+  const current = emptyWorkspaceConfig()
   const matching = setWorkspacePluginSkillStatesInConfig(global, current, 'one/plugin', states)
   assert.deepEqual(matching, emptyWorkspaceConfig())
 
   const enabled = setWorkspacePluginSkillStatesInConfig(global, current, 'one/plugin', [
     states[0], { fullName: 'one/plugin/other', enabled: true },
   ])
-  assert.deepEqual(enabled, { ...emptyWorkspaceConfig(), pluginSkills: { 'one/plugin/other': true } })
+  assert.deepEqual(enabled, { version: 1, pluginSkills: { 'one/plugin/other': true }, standaloneSkills: {} })
   assert.equal(pluginSkillEnabled(global, enabled, 'one/plugin', 'one/plugin/other'), true)
   assert.equal(global.installed['one/plugin'], undefined)
 })
 
-test('workspace config parser keeps only known boolean overrides', () => {
+test('single plugin skill override changes only the target key', () => {
+  const workspace = {
+    version: 1,
+    pluginSkills: { 'one/plugin/one': true, 'one/plugin/two': false, 'other/plugin/one': true },
+    standaloneSkills: { 'one/standalone-skills/skill': true },
+  }
+  const snapshot = structuredClone(workspace)
+  const disabled = setWorkspacePluginSkillOverride(workspace, 'one/plugin/one', 'disabled')
+  assert.deepEqual(disabled.pluginSkills, {
+    'one/plugin/one': false, 'one/plugin/two': false, 'other/plugin/one': true,
+  })
+  const inherited = setWorkspacePluginSkillOverride(disabled, 'one/plugin/one', 'inherit')
+  assert.deepEqual(inherited.pluginSkills, { 'one/plugin/two': false, 'other/plugin/one': true })
+  assert.deepEqual(inherited.standaloneSkills, workspace.standaloneSkills)
+  assert.deepEqual(workspace, snapshot)
+})
+
+test('workspace config parser keeps only known boolean overrides and ignores legacy parents', () => {
   const parsed = normalizeWorkspaceConfig({
     version: 999,
     plugins: { valid: true, invalid: 'true' },
-    pluginSkills: null,
+    pluginSkills: { enabled: true, invalid: 'true' },
     standaloneSkills: { disabled: false, nested: {} },
     ignored: { value: true },
   })
 
   assert.deepEqual(parsed, {
     version: 1,
-    plugins: { valid: true },
-    pluginSkills: {},
+    pluginSkills: { enabled: true },
     standaloneSkills: { disabled: false },
   })
+})
+
+test('legacy workspace parent overrides no longer affect activation or counts', () => {
+  const global = configFixture()
+  const legacy = {
+    version: 1,
+    plugins: { 'one/plugin': false, 'two/plugin': true },
+    pluginSkills: {},
+    standaloneSkills: {},
+  }
+
+  assert.equal(pluginSkillEnabled(global, legacy, 'one/plugin', 'one/plugin/other'), true)
+  assert.equal(workspaceOverrideCount(normalizeWorkspaceConfig(legacy)), 0)
+  assert.deepEqual(Object.keys(normalizeWorkspaceConfig(legacy)), ['version', 'pluginSkills', 'standaloneSkills'])
 })
