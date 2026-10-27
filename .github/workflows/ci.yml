@@ -121,8 +121,8 @@ jobs:
             exit 1
           fi
           test -f "$profile/pnpm-workspace.yaml" || { echo 'DSH did not initialize pnpm-workspace.yaml'; exit 1; }
-          # Profile plugins must be able to import their optional bridge.
-          # Check both actual absence and explicit installation, not CLI inventory.
+          # Check actual bridge import availability with and without explicit
+          # profile dependencies; a failed import does not prove why it failed.
           packages=("$PLUGIN_TARBALL")
           if [ "$PROFILE_HOOKS" = present ]; then
             packages+=("@deepseek-ai/dsh-hooks-codex@$DSH_VERSION" "@deepseek-ai/dsh-hook-protocol@$DSH_VERSION")
