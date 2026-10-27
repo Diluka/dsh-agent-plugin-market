@@ -68,11 +68,11 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies target `0.2.1-rc.3` (npm `next`;
+- DSH development dependencies target `0.2.1-rc.4` (npm `next`;
   `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
   subpackage dist-tags can still point to older cohorts. `engines.dsh` currently
-  explicitly supports all seven published releases from `0.2.1-alpha.2` through
-  `alpha.5` and `rc.1` through `rc.3`; CI E2E covers every release crossed with
+  explicitly supports all eight published releases from `0.2.1-alpha.2` through
+  `alpha.5` and `rc.1` through `rc.4`; CI E2E covers every release crossed with
   absent/present hooks dependencies. Their consumed APIs need no historical
   bridge. Do not replace the explicit list with an open range or change `lib/`
   merely to widen compatibility. Apply the upgrade policy above when changing
@@ -90,14 +90,16 @@ repository is not a standalone web application.
   Test with separate sibling Connection and WebServer provider Fibers; providing
   the WebServer on the root Context hides this guard failure.
 - Keep each CI smoke installation on one DSH release cohort with
-  `.github/pin-dsh.cjs` and a fresh step-local pnpm cache. Apply the hook to both
-  `dlx` and profile child installs; wildcard peers and framework patch ranges can
-  drift even when the CLI pins its DSH dependencies. Cross the supported runtime
-  versions with absent/present profile-local hooks dependencies, and verify actual
-  bridge availability through the authenticated market RPC instead of assuming
-  CLI dependencies are importable by profile plugins. Do not add the bridge to
-  `dsh.profile.bundles`; it has no bundle declaration. Retain Node downgrade tests
-  for bridge unavailability.
+  `.github/pin-dsh.cjs` and a fresh step-local pnpm cache. Initialize the smoke
+  profile with the target DSH's `initProfile` before installing dependencies so
+  its pnpm linker and peer settings match the real profile defaults. Apply the
+  hook to both `dlx` and profile child installs; wildcard peers and framework
+  patch ranges can drift even when the CLI pins its DSH dependencies. Cross
+  the supported runtime versions with absent/present profile-local hooks
+  dependencies, and verify actual bridge availability through the authenticated
+  market RPC instead of assuming CLI dependencies are importable by profile
+  plugins. Do not add the bridge to `dsh.profile.bundles`; it has no bundle
+  declaration. Retain Node downgrade tests for bridge unavailability.
   Revalidate the Cordis 4.0.5 / Loader 1.0.6 / Include 1.0.10 companion baseline
   when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
@@ -137,7 +139,10 @@ repository is not a standalone web application.
   event support beyond the verified installed bridge/protocol contract.
 - Use exclusive local debugging: link the Web profile to this repository root
   and develop here. Do not use a separate Git worktree for debugging; switching
-  branches in the root checkout is allowed when needed.
+  branches in the root checkout is allowed when needed. A linked plugin may
+  resolve its bridge from this repository's development dependencies rather
+  than the profile's explicit dependencies; verify the actual resolved cohort
+  matches the running DSH before reloading it.
 - Do not start a replacement Vite server for the existing DSH GUI. Client
   changes need a page refresh unless the DSH checkout's `pnpm run dev:web`
   watcher is running; claim HMR only after verifying that watcher.

@@ -10,7 +10,7 @@ const dshVersion = manifest.devDependencies['@deepseek-ai/dsh-agent']
 // Verified published releases only; neither a rolling window nor an open range.
 const supportedVersions = [
   '0.2.1-alpha.2', '0.2.1-alpha.3', '0.2.1-alpha.4', '0.2.1-alpha.5',
-  '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3',
+  '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4',
 ]
 
 function withVersion(version, run) {
@@ -25,6 +25,8 @@ function withVersion(version, run) {
 }
 
 test('development dependencies and CI target a pinned cohort while E2E covers declared support', () => {
+  // The selected npm next release is an independent target, not derived from the manifest.
+  assert.equal(dshVersion, '0.2.1-rc.4')
   assert.match(dshVersion, /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/)
   for (const [name, version] of Object.entries(manifest.devDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, dshVersion, name)
@@ -40,6 +42,8 @@ test('development dependencies and CI target a pinned cohort while E2E covers de
   assert.equal(workflow.match(/^ {2}DSH_VERSION: (\S+)$/m)?.[1], dshVersion)
   const smokeVersions = workflow.match(/^ {8}dsh-version: \[([^\]]+)\]$/m)?.[1].split(',').map(value => value.trim())
   assert.deepEqual(smokeVersions, supported)
+  const hooksModes = workflow.match(/^ {8}profile-hooks: \[([^\]]+)\]$/m)?.[1].split(',').map(value => value.trim())
+  assert.deepEqual(hooksModes, ['absent', 'present'])
   assert.match(workflow, /DSH_VERSION: \$\{\{ matrix\.dsh-version \}\}/)
   assert.match(workflow, /@deepseek-ai\/dsh-hooks-codex@\$DSH_VERSION/)
   assert.match(workflow, /@deepseek-ai\/dsh-hook-protocol@\$DSH_VERSION/)
@@ -49,7 +53,7 @@ test('DSH compatibility preflight accepts supported releases and rejects unverif
   for (const version of supportedVersions) {
     assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
   }
-  for (const version of ['0.1.6-alpha.2', '0.1.7-alpha.1', '0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.4', '0.2.1', '0.3.0']) {
+  for (const version of ['0.1.6-alpha.2', '0.1.7-alpha.1', '0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.5', '0.2.1', '0.3.0']) {
     assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
@@ -74,6 +78,11 @@ test('the smoke profile selects bundles without mounting the optional bridge lib
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
   const bundles = JSON.parse(workflow.match(/"bundles":\s*(\[[^\n]*\])/)?.[1] || 'null')
   assert.deepEqual(bundles, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-agent-plugin-market'])
+  // Profile creation must use DSH's actual pnpm settings before adding dependencies.
+  assert.match(workflow, /import \{ initProfile \} from '@deepseek-ai\/dsh-app-boot'/)
+  const initialize = workflow.indexOf('initProfile(process.argv[2], [])')
+  const install = workflow.indexOf('pnpm --dir "$profile" add')
+  assert.ok(initialize >= 0 && install > initialize)
 })
 
 test('CI pins the entire DSH dependency cohort without changing unrelated packages', () => {

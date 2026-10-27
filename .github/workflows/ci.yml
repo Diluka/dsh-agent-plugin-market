@@ -10,7 +10,7 @@ permissions:
 env:
   NODE_VERSION: 24.19.0
   PNPM_VERSION: 10.34.1
-  DSH_VERSION: 0.2.1-rc.3
+  DSH_VERSION: 0.2.1-rc.4
 
 jobs:
   unit:
@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dsh-version: [0.2.1-alpha.2, 0.2.1-alpha.3, 0.2.1-alpha.4, 0.2.1-alpha.5, 0.2.1-rc.1, 0.2.1-rc.2, 0.2.1-rc.3]
+        dsh-version: [0.2.1-alpha.2, 0.2.1-alpha.3, 0.2.1-alpha.4, 0.2.1-alpha.5, 0.2.1-rc.1, 0.2.1-rc.2, 0.2.1-rc.3, 0.2.1-rc.4]
         profile-hooks: [absent, present]
     env:
       DSH_VERSION: ${{ matrix.dsh-version }}
@@ -102,6 +102,11 @@ jobs:
             }
           }
           EOF
+          # Use the target DSH's real profile defaults before installing peers.
+          node --input-type=module - "$profile" <<'JS'
+          import { initProfile } from '@deepseek-ai/dsh-app-boot'
+          initProfile(process.argv[2], [])
+          JS
           pnpm --dir "$profile" add "${packages[@]}"
 
           port=3080
