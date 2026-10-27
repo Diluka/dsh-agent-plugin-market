@@ -96,7 +96,14 @@ async function viewsFixture(initialMarkets = [], options = {}) {
       assert.equal(route, '/agent-plugin-market')
       if (method === 'get-state') {
         reads.push(args.workspaceId || 'global')
-        const value = { markets: structuredClone(scopedMarkets.get(args.workspaceId || 'global') || markets), workspaces: structuredClone(workspaces), scope: args.workspaceId ? { kind: 'workspace', id: args.workspaceId } : { kind: 'global' } }
+        const value = {
+          markets: structuredClone(scopedMarkets.get(args.workspaceId || 'global') || markets),
+          workspaces: structuredClone(workspaces),
+          scope: args.workspaceId
+            ? { kind: 'workspace', id: args.workspaceId, title: 'Workspace', path: '/fixture', overrideCount: 0 }
+            : { kind: 'global' },
+          hooksBridge: options.hooksBridge || { available: true, installCommand: '' },
+        }
         if (holdReads) return new Promise((resolve, reject) => pendingReads.push({
           scope: args.workspaceId || 'global', value,
           respond: (next = value) => resolve({ ok: true, value: next }),
@@ -105,11 +112,11 @@ async function viewsFixture(initialMarkets = [], options = {}) {
         }))
         return { ok: true, value }
       }
-      assert.ok(['add-market', 'set-workspace-skill-enabled', 'set-workspace-plugin-enabled', 'set-plugin-skills-enabled', 'set-skill-enabled', 'install-plugin', 'uninstall-plugin'].includes(method))
+      assert.ok(['add-market', 'set-workspace-skill-enabled', 'set-workspace-plugin-enabled', 'set-plugin-skills-enabled', 'set-skill-enabled', 'set-plugin-hooks-enabled', 'install-plugin', 'uninstall-plugin'].includes(method))
       writes.push(structuredClone({ method, args }))
       if (refuseWrite) return { ok: false, error: { message: 'fixture write refused' } }
       if (onWrite) await onWrite(method, args)
-      if (method === 'add-market') markets.push({ id: 'fixture-market', name: 'Fixture Market', repo: args.repo, plugins: [{ name: 'fixture-plugin', skills: [{ name: 'fixture-skill' }] }] })
+      if (method === 'add-market') markets.push({ id: 'fixture-market', name: 'Fixture Market', repo: args.repo, manifestFound: true, standaloneSkills: [], plugins: [{ name: 'fixture-plugin', installed: false, hooks: null, skills: [{ name: 'fixture-skill' }] }] })
       return { ok: true, value: {} }
     } } },
   })
@@ -228,7 +235,7 @@ async function skillFixture(t, { plugin = {}, skill = {}, standalone = false, wo
   const skillView = { name: 'skill', fullName, globalEnabled: true, enabled: false, workspaceOverride: null, ...skill }
   const fixture = await viewsFixture([{
     id: 'market', name: 'Market', repo: 'https://example.test/market.git', manifestFound: true,
-    plugins: standalone ? [] : [{ name: 'plugin', installed: false, enabled: false, globalEnabled: false, workspaceOverride: null, skills: [skillView], ...plugin }],
+    plugins: standalone ? [] : [{ name: 'plugin', installed: false, hooks: null, skills: [skillView], ...plugin }],
     standaloneSkills: standalone ? [skillView] : [],
   }], { workspaces })
   t.after(() => fixture.dispose())
@@ -263,14 +270,15 @@ test('workspace switches show effective state and a small inherited-source badge
 })
 
 test('enabled workspace skills use an on switch regardless of inherited configuration', async (t) => {
-  const fixture = await skillFixture(t, { plugin: { enabled: true, workspaceOverride: true }, skill: { enabled: true } })
+  const fixture = await skillFixture(t, { skill: { enabled: true } })
   assert.equal(fixture.toggle.props.checked, true)
   assert.equal(fixture.master.props.checked, true)
   assert.match(text(fixture.row), /已启用/)
-  assert.doesNotMatch(text(fixture.row), /继承|全局|未启用/)
+  assert.match(text(fixture.row), /继承/)
+  assert.doesNotMatch(text(fixture.row), /全局|未启用/)
 })
 
-test('master state follows the actual skill rather than the plugin base or installation flag', async (t) => {
+test('master state follows the actual skill rather than the installation flag', async (t) => {
   const fixture = await skillFixture(t, { skill: { enabled: true, globalEnabled: false, workspaceOverride: true } })
   assert.equal(fixture.toggle.props.checked, true)
   assert.equal(fixture.toggle.props.disabled, false)
@@ -281,8 +289,8 @@ test('master state follows the actual skill rather than the plugin base or insta
   assert.doesNotMatch(text(fixture.tree), /恢复默认/)
 })
 
-test('an installed plugin skill stays clickable even when its workspace parent is disabled', async (t) => {
-  const fixture = await skillFixture(t, { plugin: { installed: true, globalEnabled: true, workspaceOverride: false }, skill: { workspaceOverride: true } })
+test('an installed plugin skill stays clickable while the plugin itself is not fully enabled', async (t) => {
+  const fixture = await skillFixture(t, { plugin: { installed: true }, skill: { workspaceOverride: true } })
   assert.equal(fixture.toggle.props.checked, false)
   assert.equal(fixture.toggle.props.disabled, false)
   assert.equal(fixture.toggle.props.title, undefined)
@@ -297,8 +305,8 @@ test('an installed plugin skill stays clickable even when its workspace parent i
 })
 
 test('workspace-disabled and default-disabled skills have the same primary off state', async (t) => {
-  const disabled = await skillFixture(t, { plugin: { enabled: true }, skill: { workspaceOverride: false } })
-  const inherited = await skillFixture(t, { plugin: { enabled: true }, skill: { globalEnabled: false } })
+  const disabled = await skillFixture(t, { skill: { workspaceOverride: false } })
+  const inherited = await skillFixture(t, { skill: { globalEnabled: false } })
   for (const fixture of [disabled, inherited]) {
     assert.equal(fixture.toggle.props.checked, false)
     assert.equal(fixture.toggle.props.disabled, false)
@@ -319,7 +327,7 @@ test('direct skill switches write workspace enable and disable without changing 
 })
 
 test('workspace master invokes all-skill commands, never inheritance or installation', async (t) => {
-  const fixture = await skillFixture(t, { plugin: { workspaceOverride: false } })
+  const fixture = await skillFixture(t)
   await fixture.master.props.onChange(true)
   await fixture.master.props.onChange(false)
   assert.deepEqual(fixture.writes, ['enabled', 'disabled'].map((mode) => ({
@@ -356,7 +364,7 @@ test('in-flight and refused workspace changes never optimistically report an ena
 })
 
 test('current state and aggregate master labels follow the locale', async (t) => {
-  const fixture = await skillFixture(t, { locale: 'en', plugin: { workspaceOverride: false }, skill: { workspaceOverride: true } })
+  const fixture = await skillFixture(t, { locale: 'en', skill: { workspaceOverride: true } })
   assert.match(text(fixture.row), /Disabled/)
   assert.equal(fixture.master.props.label, 'All disabled 0/1')
   assert.match(fixture.nativeMaster.attributes['aria-label'], /All skills/)
@@ -378,8 +386,8 @@ test('global uninstalled plugin skills show the same control with an installatio
 })
 
 test('global and workspace scopes use identical activation controls with scope-specific writes', async (t) => {
-  const global = await skillFixture(t, { workspace: false, plugin: { installed: true, enabled: true }, skill: { enabled: true } })
-  const workspace = await skillFixture(t, { plugin: { installed: true, enabled: true }, skill: { enabled: true } })
+  const global = await skillFixture(t, { workspace: false, plugin: { installed: true }, skill: { enabled: true } })
+  const workspace = await skillFixture(t, { plugin: { installed: true }, skill: { enabled: true } })
   assert.equal(text(nodes(global.row, (node) => node.props.className === 'apm-effective-label on')[0]), text(nodes(workspace.row, (node) => node.props.className === 'apm-effective-label on')[0]))
   assert.equal(nodes(global.row, (node) => node.props.className === 'apm-config-source').length, 0)
   assert.match(text(workspace.row), /继承/)
@@ -409,7 +417,7 @@ for (const workspace of [false, true]) {
     const fixture = await skillFixture(t, {
       workspace,
       plugin: {
-        installed: true, enabled: true,
+        installed: true,
         skills: [
           { name: 'skill', fullName: 'market/plugin/skill', enabled: true },
           { name: 'other', fullName: 'market/plugin/other', enabled: false },
@@ -430,7 +438,7 @@ for (const workspace of [false, true]) {
 
 test('rejected native master activation restores its accepted mixed appearance', async (t) => {
   const fixture = await skillFixture(t, {
-    plugin: { installed: true, enabled: true, skills: [
+    plugin: { installed: true, skills: [
       { name: 'skill', fullName: 'market/plugin/skill', enabled: true },
       { name: 'other', fullName: 'market/plugin/other', enabled: false },
     ] },
@@ -451,7 +459,7 @@ test('rejected native master activation restores its accepted mixed appearance',
 })
 
 test('an installed plugin with every skill off still has actionable individual and master controls', async (t) => {
-  const fixture = await skillFixture(t, { workspace: false, plugin: { installed: true, enabled: false } })
+  const fixture = await skillFixture(t, { workspace: false, plugin: { installed: true } })
   assert.equal(fixture.toggle.props.disabled, false)
   assert.equal(fixture.master.props.disabled, false)
   assert.equal(fixture.master.props.checked, false)
@@ -463,7 +471,7 @@ test('an installed plugin with every skill off still has actionable individual a
 })
 
 test('installation management remains an explicit separate action', async (t) => {
-  const installed = await skillFixture(t, { workspace: false, plugin: { installed: true, enabled: false } })
+  const installed = await skillFixture(t, { workspace: false, plugin: { installed: true } })
   await installed.installation.props.onClick()
   assert.deepEqual(installed.writes, [{ method: 'uninstall-plugin', args: { marketId: 'market', pluginName: 'plugin' } }])
   const available = await skillFixture(t, { workspace: false })
@@ -471,11 +479,11 @@ test('installation management remains an explicit separate action', async (t) =>
   assert.deepEqual(available.writes, [{ method: 'install-plugin', args: { marketId: 'market', pluginName: 'plugin' } }])
 })
 
-for (const [pluginOverride, skillOverride, expected] of [
-  [null, null, '继承'], [null, false, '覆盖'], [null, true, '覆盖'], [false, null, '覆盖'], [true, null, '覆盖'],
+for (const [skillOverride, expected] of [
+  [null, '继承'], [false, '覆盖'], [true, '覆盖'],
 ]) {
-  test(`read-only source badge reflects child and legacy parent settings (${pluginOverride}/${skillOverride})`, async (t) => {
-    const fixture = await skillFixture(t, { plugin: { workspaceOverride: pluginOverride }, skill: { workspaceOverride: skillOverride } })
+  test(`read-only source badge reflects the skill workspace override (${skillOverride})`, async (t) => {
+    const fixture = await skillFixture(t, { skill: { workspaceOverride: skillOverride } })
     const badge = nodes(fixture.row, (node) => node.props.className === 'apm-config-source')[0]
     assert.equal(text(badge), expected)
     const group = nodes(fixture.tree, (node) => node.props.className === 'apm-master-control')[0]
@@ -515,8 +523,9 @@ const loadedScope = (fixture) => pageScope(fixture.page)
 const selectScope = (fixture, id) => child(fixture.page.render(), 'scope').props.onScopeChange(id)
 const editableNodes = (fixture) => nodes(fixture.render(), (node) => node.type === 'Switch' || node.type === 'Checkbox')
 const activationMarkets = (enabled) => [{
-  id: 'market', name: 'Market', repo: 'https://example.test/market.git',
-  plugins: [{ name: 'plugin', installed: true, skills: [{ name: 'skill', fullName: 'market/plugin/skill', enabled }] }],
+  id: 'market', name: 'Market', repo: 'https://example.test/market.git', manifestFound: true,
+  standaloneSkills: [],
+  plugins: [{ name: 'plugin', installed: true, hooks: null, skills: [{ name: 'skill', fullName: 'market/plugin/skill', enabled }] }],
 }]
 
 test('scope selection removes old controls immediately and rejects retained old-scope callbacks', async (t) => {
@@ -768,4 +777,67 @@ test('synchronous duplicate callbacks and scope changes cannot bypass an in-flig
   assert.equal(child(fixture.page.render(), 'scope').props.workspaceId, null)
   finish()
   await write
+})
+
+const hookView = { available: true, found: true, count: 2, enabled: false, active: false, needsApproval: false, error: null }
+const hookMarket = (hooks) => [{
+  id: 'market', name: 'Market', repo: 'https://example.test/market.git', manifestFound: true,
+  standaloneSkills: [],
+  plugins: [{
+    name: 'plugin', title: 'Plugin', installed: true, hooks,
+    skills: [{ name: 'skill', fullName: 'market/plugin/skill', globalEnabled: true, workspaceOverride: null, enabled: true }],
+  }],
+}]
+const hookSwitches = (tree) => nodes(tree, (node) => node.type === 'button' && node.props.role === 'switch' && /Codex hooks/.test(node.props['aria-label'] || ''))
+test('hook activation requires a second confirmation before writing', async (t) => {
+  const fixture = await viewsFixture(hookMarket(hookView))
+  t.after(() => fixture.dispose())
+  await settle()
+  const page = fixture.mount(fixture.mainPage)
+  t.after(() => page.unmount())
+  await settle()
+  const collapsed = fixture.expand(page.render())
+  assert.match(text(collapsed), /默认关闭/)
+  nodes(collapsed, (node) => node.type === 'DisclosureRow')[0].props.onToggle()
+  const initial = hookSwitches(fixture.expand(page.render()))[0]
+  assert.equal(initial.props['aria-checked'], false)
+  await initial.props.onClick()
+  assert.equal(fixture.writes.length, 0, 'the first click only arms the confirmation')
+  assert.match(text(fixture.expand(page.render())), /再次点击开关确认/)
+  const confirmed = hookSwitches(fixture.expand(page.render()))[0]
+  await confirmed.props.onClick()
+  assert.deepEqual(fixture.writes, [{
+    method: 'set-plugin-hooks-enabled',
+    args: { marketId: 'market', pluginName: 'plugin', enabled: true },
+  }])
+})
+
+test('an unavailable hooks bridge reports its install command and disables hook activation', async (t) => {
+  const fixture = await viewsFixture(hookMarket({ ...hookView, available: false }), {
+    hooksBridge: { available: false, installCommand: 'pnpm add @deepseek-ai/dsh-hooks-codex' },
+  })
+  t.after(() => fixture.dispose())
+  await settle()
+  const page = fixture.mount(fixture.mainPage)
+  t.after(() => page.unmount())
+  await settle()
+  const collapsed = fixture.expand(page.render())
+  assert.match(text(collapsed), /Codex hooks bridge 当前不可用/)
+  assert.match(text(collapsed), /pnpm add @deepseek-ai\/dsh-hooks-codex/)
+  nodes(collapsed, (node) => node.type === 'DisclosureRow')[0].props.onToggle()
+  assert.equal(hookSwitches(fixture.expand(page.render()))[0].props.disabled, true)
+})
+
+test('workspace pages keep hooks global and read-only', async (t) => {
+  const fixture = await viewsFixture(hookMarket(hookView))
+  t.after(() => fixture.dispose())
+  await settle()
+  const page = fixture.mount({ ...fixture.mainPage, props: { workspace: defaultWorkspace } })
+  t.after(() => page.unmount())
+  await settle()
+  const collapsed = fixture.expand(page.render())
+  nodes(collapsed, (node) => node.type === 'DisclosureRow')[0].props.onToggle()
+  const tree = fixture.expand(page.render())
+  assert.equal(hookSwitches(tree).length, 0, 'hooks stay under the global configuration')
+  assert.match(text(tree), /Hooks 和执行审批仍使用全局配置/)
 })

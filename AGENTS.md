@@ -23,12 +23,13 @@ repository is not a standalone web application.
   plugin/skill override writes, with scoped restriction for home-path agents.
 - `lib/market-config.js`: Pure configuration state transitions for markets,
   installed plugins, skill switches, and related cleanup.
-- `lib/codex-hook-manager.js`: Codex hook inspection, approval reconciliation,
-  generated bridge configuration, and hook Fiber lifecycle management.
-- `lib/hook-reconcile-plan.js`: Pure desired-versus-active hook reconciliation
-  plan.
+- `lib/codex-hook-manager.js`: Codex hook inspection, desired-versus-active
+  reconciliation planning, approval coordination, generated bridge
+  configuration, and hook Fiber lifecycle management.
 - `lib/codex-hooks.js`: Pure helpers for hook-source parsing, path validation,
   stable fingerprints and storage keys, plus command-environment injection.
+- `lib/util.js`: Internal helpers without business semantics (currently log and
+  runtime-error message extraction only).
 - `lib/client.js`: Browser plugin. It is plain JavaScript loaded by
   `window.__ModuleLoader__`; split catalog models, shared controls, settings
   section, and workspace dialog into internal functions/sections in this file;
@@ -43,26 +44,23 @@ repository is not a standalone web application.
 
 ## DSH Upgrade and Compatibility Policy
 
-- Implement features and API adaptations against the latest selected target DSH
-  version. Keep historical-version support limited, but support at least the
-  immediately preceding release when its APIs can support the plugin simply.
-- Drop a historical version when its APIs no longer support the implementation
-  without complex compatibility code. Do not build elaborate bridges or parallel
-  implementations just to retain additional old versions; document the concrete
-  incompatibility and the resulting support boundary.
-- Across a `0.x` release-line transition, normally retain only the final minor /
-  patch release of the preceding `0.x` line rather than every release in that line.
-- If an older version's APIs remain fully compatible and need no adaptation, keep
-  declaring it supported regardless of its age; do not retire it merely because
-  it falls outside a rolling version window.
-- E2E must cover both endpoints of each continuous supported range, meaningful
-  API boundaries, and the current npm `latest` and `next` channels separately.
-  Reuse a channel test for a matching endpoint, and keep every installation on
-  its own coherent DSH cohort.
-- Keep `engines.dsh`, dependency pins, CI coverage, runtime installation guidance,
-  and documentation consistent. Bound the range at the newest verified release;
-  SemVer also admits unpublished prereleases between the bounds. Keep the plugin
-  version plain SemVer, without encoding the DSH target in a suffix.
+- npm `latest` and `next` are the required compatibility targets: both must work
+  against the current implementation.
+- `engines.dsh` declares a bounded best-effort range. Extend the lower bound as
+  far as the current implementation naturally works, without version-specific
+  compatibility code. Releases inside the range other than `latest` and `next`
+  are best-effort: do not add bridges or parallel implementations to retain one.
+  If a release needs ad-hoc compatibility work to start, drop it from the range
+  instead and record the concrete incompatibility boundary.
+- CI covers the earliest declared supported release, npm `latest`, and npm
+  `next`, deduplicated by version, crossed with absent/present hooks
+  dependencies. Add another release only when it is a meaningful API boundary.
+- If `next` moves above the declared upper bound, the smoke preflight fails and
+  prompts an adaptation: verify the new release, then extend the bound. Do not
+  keep an untested maximum target.
+- Keep `engines.dsh`, dependency pins, CI coverage, runtime installation
+  guidance, and documentation consistent. Keep the plugin version plain SemVer,
+  without encoding the DSH target in a suffix.
 
 ## Development Rules
 
@@ -72,19 +70,21 @@ repository is not a standalone web application.
 - DSH development dependencies target `0.2.1-rc.4` (npm `next`;
   `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
   subpackage dist-tags can still point to older cohorts. `engines.dsh` is bounded
-  from `0.2.1-alpha.2` through `0.2.1-rc.4`, covering eight currently published
-  releases and any SemVer prereleases between the bounds. CI E2E covers the
-  range endpoints and the independently resolved `latest` and `next` channels,
-  crossed with absent/present hooks dependencies. Their consumed APIs need no
-  historical bridge. Do not use an open-ended range or change `lib/` merely to
-  widen compatibility. Apply the upgrade policy above when changing this range.
+  from `0.2.1-alpha.2` through `0.2.1-rc.4`, the range that works with the
+  current implementation without version-specific code. `latest` and `next`
+  must pass; intermediate releases are best-effort and CI only smoke-tests the
+  earliest bound plus both channels, deduplicated by version, crossed with
+  absent/present hooks dependencies. Do not use an open-ended range or change
+  `lib/` merely to widen compatibility. Apply the compatibility policy above
+  when changing this range.
   The unchanged bundle patch sets the Connection provider's inject list to
   `[webStartup, webServer]`. Versions from `0.1.7-alpha.1` through
   `0.2.1-alpha.1` still read `webRuntime` in the upstream Connection config
   expression, so this override fails startup with `cannot get property
   "webRuntime" without inject`, even though the consumed Host methods exist.
-  Versions before `0.1.7-alpha.1` also lack `settings.configure()`. Retain these
-  concrete boundaries instead of inferring compatibility from API names alone.
+  Versions before `0.1.7-alpha.1` also lack `settings.configure()`. These are
+  the concrete reason the lower bound is `0.2.1-alpha.2`; retain that boundary
+  instead of inferring compatibility from API names alone.
   The `alpha.2` and `alpha.3` preflight ignores `engines.dsh`, so do not assume
   older runtimes enforce the declared bounds. The Host must inject both
   `connection` and `webServer`. The bundle patch must also add `webServer` to
@@ -98,11 +98,11 @@ repository is not a standalone web application.
   linker and peer settings match that release's profile defaults. Apply the
   hook to both `dlx` and profile child installs; wildcard peers and framework
   patch ranges can drift even when the CLI pins its DSH dependencies. Cross
-  the supported runtime versions with absent/present profile-local hooks
-  dependencies, and verify actual bridge availability through the authenticated
-  market RPC instead of assuming CLI dependencies are importable by profile
-  plugins. Do not add the bridge to `dsh.profile.bundles`; it has no bundle
-  declaration. Retain Node downgrade tests for bridge unavailability.
+  the smoke targets with absent/present profile-local hooks dependencies, and
+  verify actual bridge availability through the authenticated market RPC
+  instead of assuming CLI dependencies are importable by profile plugins. Do
+  not add the bridge to `dsh.profile.bundles`; it has no bundle declaration.
+  Retain Node downgrade tests for bridge unavailability.
   Revalidate the Cordis 4.0.5 / Loader 1.0.6 / Include 1.0.10 companion baseline
   when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
@@ -180,8 +180,8 @@ as UI evidence. Check the settings entry, market controls,
 disabled/enabled switch contrast, and both light and dark themes after visual
 changes.
 
-The Node suite covers configuration, runtime scanning, hook helpers,
-reconciliation planning, and catalog-model behavior. For manual hook E2E
+The Node suite covers configuration, runtime scanning, hook helpers and hook
+lifecycle, and catalog-model behavior. For manual hook E2E
 verification, create a disposable local Git market fixture under ignored
 `test-repos/`, trigger a real DSH tool call, verify enabled delivery and disable
 disposal, then update the market to check that unchanged approved fingerprints

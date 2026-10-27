@@ -358,7 +358,7 @@ test('loads explicitly enabled standalone skills', async () => {
   assert.deepEqual((await runtime.collectSkills()).map((skill) => skill.skillName), ['standalone'])
 })
 
-test('uses the current workspace config to override plugin and skill activation', async () => {
+test('workspace config overrides plugin skill activation and ignores legacy parent gates', async () => {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
   const runtime = runtimeFor({
     '/dsh/agent-plugin-market/config.json': JSON.stringify({
@@ -381,11 +381,13 @@ test('uses the current workspace config to override plugin and skill activation'
     [marketDir + '/plugins/workspace-plugin/skills/re-enabled/SKILL.md']: skillDoc('re-enabled'),
     [marketDir + '/skills/standalone/SKILL.md']: skillDoc('standalone'),
     '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify({
-      plugins: {
-        'market/global-plugin': false,
-        'market/workspace-plugin': true,
+      // Legacy parent gates would hide workspace-plugin before its child overrides apply.
+      plugins: { 'market/global-plugin': true, 'market/workspace-plugin': false },
+      pluginSkills: {
+        'market/global-plugin/global': false,
+        'market/workspace-plugin/workspace-default': true,
+        'market/workspace-plugin/re-enabled': true,
       },
-      pluginSkills: { 'market/workspace-plugin/re-enabled': true },
       standaloneSkills: { 'market/standalone-skills/standalone': true },
     }),
   })
@@ -417,7 +419,6 @@ test('enables a plugin skill in a workspace even when the plugin base is not ins
     [marketDir + '/plugins/plugin/skills/one/SKILL.md']: skillDoc('one'),
     [marketDir + '/plugins/plugin/skills/two/SKILL.md']: skillDoc('two'),
     '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify({
-      plugins: {},
       pluginSkills: { 'market/plugin/one': true },
       standaloneSkills: {},
     }),
@@ -438,6 +439,7 @@ function blockedActivationFixture({
   globalOverrides = {}, workspaceOverrides = {}, additionalFiles = {}, aliases = {},
 } = {}) {
   const marketDir = '/dsh/agent-plugin-market/markets/market'
+  const pluginSkillNames = ['one', 'two', 'three', 'four', ...(duplicate || additionalSource === 'extra' ? ['five'] : [])]
   const globalConfig = {
     markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
     installed: installed ? { 'market/plugin': { marketId: 'market', pluginName: 'plugin' } } : {},
@@ -448,10 +450,12 @@ function blockedActivationFixture({
   }
   const workspaceConfig = {
     version: 1,
-    plugins: { 'market/plugin': false, 'unrelated/plugin': false },
-    pluginSkills: { 'market/plugin/two': true, 'unrelated/plugin/keep': true },
-    standaloneSkills: { 'unrelated/standalone-skills/keep': true },
-    ...workspaceOverrides,
+    pluginSkills: {
+      ...Object.fromEntries(pluginSkillNames.map((name) => ['market/plugin/' + name, false])),
+      'unrelated/plugin/keep': true,
+      ...workspaceOverrides.pluginSkills,
+    },
+    standaloneSkills: { 'unrelated/standalone-skills/keep': true, ...workspaceOverrides.standaloneSkills },
   }
   const writes = []
   const fs = createVfsBackedFs({
@@ -501,7 +505,6 @@ function ownerCollisionFixture(globalOverrides = {}) {
       ...globalOverrides,
     },
     workspaceOverrides: {
-      plugins: { 'market/p': true, 'market/p/q': true },
       pluginSkills: { 'market/p/a': false, 'market/p/q': false, 'market/p/q/b': false },
     },
     additionalFiles: {
@@ -543,7 +546,6 @@ for (const { pluginName, skills, otherPluginName, otherSkills } of [
       }
       assert.equal(fixture.reconciled(), reconciledBefore, 'activation never reconciles hooks')
       const current = await runtime.loadWorkspaceConfig('/workspace-a')
-      assert.equal(current.plugins['market/' + otherPluginName], true)
       for (const skill of otherSkills) assert.equal(current.pluginSkills['market/' + otherPluginName + '/' + skill], false)
       assert.deepEqual(current.standaloneSkills, fixture.workspaceConfig.standaloneSkills)
       assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
@@ -579,56 +581,55 @@ for (const { pluginName, skills, otherPluginName, otherSkills } of [
   })
 }
 
-for (const installed of [true, false]) {
-  test(`enabling a skill lifts its disabled parent without enabling siblings (installed=${installed})`, async () => {
-    const fixture = blockedActivationFixture({ installed })
-    const { runtime, service } = fixture
-    const otherWorkspaceBefore = await runtime.collectSkills({ cwd: '/workspace-b' })
-    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-a' }), [])
+test('single-skill workspace write changes only its target and inherits when it matches global', async () => {
+  const fixture = blockedActivationFixture({ workspaceOverrides: {
+    pluginSkills: { 'market/plugin/two': false, 'market/plugin/four': true, 'unrelated/plugin/keep': true },
+  } })
+  const { runtime, service } = fixture
+  const otherWorkspaceBefore = await runtime.collectSkills({ cwd: '/workspace-b' })
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName), ['four'])
 
-    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled' })
-    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/one'])
-    const state = await service.getState({ workspaceId: 'workspace-a' })
-    assert.equal(state.markets[0].plugins[0].enabled, true)
-    assert.equal(state.markets[0].plugins[0].activationState, 'partial')
-    assert.equal(state.markets[0].plugins[0].installed, installed)
-    assert.deepEqual(state.markets[0].plugins[0].skills.map((skill) => [skill.name, skill.enabled]), [
-      ['four', false], ['one', true], ['three', false], ['two', false],
-    ])
-    assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), {
-      ...fixture.workspaceConfig,
-      plugins: { 'unrelated/plugin': false },
-      pluginSkills: {
-        ...(installed ? { 'market/plugin/two': false, 'market/plugin/four': false } : { 'market/plugin/one': true }),
-        'unrelated/plugin/keep': true,
-      },
-    })
-    assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
-    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-b' }), otherWorkspaceBefore)
-    assert.equal(fixture.writes.length, 1, 'parent and skill coordination is one workspace write')
-    assert.equal(fixture.writes[0].path, '/workspace-a/.dsh/agent-plugin-market.json')
-    assert.equal(fixture.invalidated(), 1)
+  await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/four', mode: 'disabled' })
+  let current = await runtime.loadWorkspaceConfig('/workspace-a')
+  assert.equal(current.pluginSkills['market/plugin/four'], false)
+  assert.equal(current.pluginSkills['market/plugin/one'], false)
+  assert.equal(current.pluginSkills['market/plugin/two'], false)
+  assert.equal(current.pluginSkills['unrelated/plugin/keep'], true)
+  assert.deepEqual(current.standaloneSkills, fixture.workspaceConfig.standaloneSkills)
 
-    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'disabled' })
-    assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-a' }), [])
-    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/two', mode: 'enabled' })
-    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/two'])
-    await service.setWorkspacePluginEnabled({ workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin', mode: 'disabled' })
-    await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/four', mode: 'enabled' })
-    assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/four'])
-  })
-}
+  const state = await service.getState({ workspaceId: 'workspace-a' })
+  assert.equal(state.markets[0].plugins[0].installed, true)
+  assert.equal(state.markets[0].plugins[0].activationState, 'disabled')
+  assert.deepEqual(state.markets[0].plugins[0].skills.map((skill) => [skill.name, skill.enabled]), [
+    ['four', false], ['one', false], ['three', false], ['two', false],
+  ])
+  assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
+  assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-b' }), otherWorkspaceBefore)
+  assert.equal(fixture.writes.length, 1, 'a single-skill change is one workspace write')
+  assert.equal(fixture.writes[0].path, '/workspace-a/.dsh/agent-plugin-market.json')
+  assert.equal(fixture.invalidated(), 1)
+
+  await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/four', mode: 'enabled' })
+  current = await runtime.loadWorkspaceConfig('/workspace-a')
+  assert.equal(current.pluginSkills['market/plugin/four'], undefined, 'equal-to-global target inherits')
+  assert.equal(current.pluginSkills['market/plugin/one'], false)
+  assert.equal(current.pluginSkills['market/plugin/two'], false)
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName), ['four'])
+})
 
 for (const target of ['one', 'five']) {
-  test(`coordination includes every source sharing a plugin key when enabling ${target}`, async () => {
+  test(`resolves the target through every source sharing a plugin key: ${target}`, async () => {
     const fixture = blockedActivationFixture({ duplicate: true })
     await fixture.service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/' + target, mode: 'enabled' })
+    const current = await fixture.runtime.loadWorkspaceConfig('/workspace-a')
+    assert.equal(current.pluginSkills['market/plugin/' + target], undefined)
+    assert.equal(current.pluginSkills['market/plugin/two'], false)
     assert.deepEqual((await fixture.runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/' + target])
     assert.equal(fixture.writes.length, 1)
   })
 }
 
-test('an incomplete multi-source scan cannot activate the parent or omit a sibling', async () => {
+test('an incomplete multi-source scan cannot write a workspace override', async () => {
   const fixture = blockedActivationFixture({ additionalSource: 'extra', unreadableSource: true })
   await assert.rejects(() => fixture.service.setWorkspaceSkillEnabled({
     workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled',
@@ -640,7 +641,7 @@ test('an incomplete multi-source scan cannot activate the parent or omit a sibli
   assert.deepEqual(await fixture.runtime.collectSkills({ cwd: '/workspace-a' }), [])
   await fixture.service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'enabled' })
   assert.deepEqual((await fixture.runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), ['market/plugin/one'])
-  assert.equal((await fixture.runtime.loadWorkspaceConfig('/workspace-a')).pluginSkills['market/plugin/five'], false)
+  assert.equal(fixture.writes.length, 1)
 })
 
 for (const scenario of [
@@ -650,7 +651,7 @@ for (const scenario of [
   { name: 'escaped plugin source', source: '../../outside', pattern: /插件路径/ },
   { name: 'refused save', refuseSave: true, pattern: /fixture save refused/ },
 ]) {
-  test(`failed activation leaves parent and siblings unchanged: ${scenario.name}`, async () => {
+  test(`failed activation leaves the workspace config unchanged: ${scenario.name}`, async () => {
     const fixture = blockedActivationFixture(scenario)
     await assert.rejects(() => fixture.service.setWorkspaceSkillEnabled({
       workspaceId: 'workspace-a', fullName: scenario.fullName || 'market/plugin/one', mode: 'enabled',
@@ -688,7 +689,7 @@ for (const command of strictActivationCommands) {
     { name: 'refused save', refuseSave: true, pattern: /fixture save refused/ },
   ]) {
     test(`strict activation fails atomically for ${command.name}: ${scenario.name}`, async () => {
-      const fixture = blockedActivationFixture({ ...scenario, workspaceOverrides: { plugins: {} } })
+      const fixture = blockedActivationFixture(scenario)
       // Return shared live objects as well as checking persisted bytes: rejected
       // saves must not leave pre-save changes visible to other callers.
       fixture.runtime.loadConfig = async () => fixture.globalConfig
@@ -752,7 +753,6 @@ for (const scope of ['global', 'workspace']) {
       assert.equal(view.skills.length, 5)
       assert.equal(view.installed, true, 'activation never uninstalls the resource')
       assert.equal(view.activationState, activationState)
-      assert.equal(view.enabled, names.length > 0)
       assert.deepEqual(view.skills.filter((skill) => skill.enabled).map((skill) => skill.name).sort(), [...names].sort())
       assert.deepEqual((await runtime.collectSkills({ cwd: scope === 'workspace' ? '/workspace-a' : '/workspace-b' }))
         .map((skill) => skill.skillName).sort(), [...names].sort())
@@ -778,7 +778,6 @@ for (const scope of ['global', 'workspace']) {
       assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
       assert.deepEqual(await runtime.collectSkills({ cwd: '/workspace-b' }), otherWorkspaceBefore)
       const config = await runtime.loadWorkspaceConfig('/workspace-a')
-      assert.deepEqual(config.plugins, { 'unrelated/plugin': false })
       assert.equal(config.pluginSkills['unrelated/plugin/keep'], true)
       assert.deepEqual(config.standaloneSkills, fixture.workspaceConfig.standaloneSkills)
     } else {
@@ -829,14 +828,12 @@ test('workspace batch toggles retain only global mixed-state differences and inh
   const args = { workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin' }
   await service.setPluginSkillsEnabled({ ...args, enabled: true })
   let current = await runtime.loadWorkspaceConfig('/workspace-a')
-  assert.deepEqual(current.plugins, { 'unrelated/plugin': false })
   assert.deepEqual(current.pluginSkills, { 'market/plugin/three': true, 'unrelated/plugin/keep': true })
   await service.setSkillEnabled({ fullName: 'market/plugin/two', enabled: false })
   assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName).sort(), ['four', 'one', 'three'])
 
   await service.setWorkspacePluginEnabled({ ...args, mode: 'disabled' })
   current = await runtime.loadWorkspaceConfig('/workspace-a')
-  assert.deepEqual(current.plugins, { 'unrelated/plugin': false })
   assert.deepEqual(current.pluginSkills, { 'market/plugin/one': false, 'market/plugin/four': false, 'unrelated/plugin/keep': true })
   await service.setPluginSkillsEnabled({ marketId: 'market', pluginName: 'plugin', enabled: false })
   await service.setWorkspacePluginEnabled({ ...args, mode: 'disabled' })
@@ -852,7 +849,6 @@ for (const installed of [true, false]) {
     const fixture = blockedActivationFixture({
       installed,
       workspaceOverrides: {
-        plugins: { 'unrelated/plugin': false },
         pluginSkills: { 'market/plugin/one': !installed, 'market/plugin/two': !installed, 'unrelated/plugin/keep': true },
       },
     })
@@ -876,29 +872,7 @@ for (const installed of [true, false]) {
   })
 }
 
-test('single-skill changes migrate a legacy enabled parent without losing sibling actual states', async () => {
-  const fixture = blockedActivationFixture({
-    installed: false,
-    workspaceOverrides: {
-      plugins: { 'market/plugin': true, 'unrelated/plugin': false },
-      pluginSkills: { 'market/plugin/two': false, 'market/plugin/three': true, 'unrelated/plugin/keep': true },
-    },
-  })
-  const { service, runtime } = fixture
-  await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'disabled' })
-  let current = await runtime.loadWorkspaceConfig('/workspace-a')
-  assert.deepEqual(current.plugins, { 'unrelated/plugin': false })
-  assert.deepEqual(current.pluginSkills, { 'market/plugin/three': true, 'market/plugin/four': true, 'unrelated/plugin/keep': true })
-  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName).sort(), ['four', 'three'])
-  await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName: 'market/plugin/three', mode: 'inherit' })
-  current = await runtime.loadWorkspaceConfig('/workspace-a')
-  assert.deepEqual(current.pluginSkills, { 'market/plugin/four': true, 'unrelated/plugin/keep': true })
-  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName), ['four'])
-  assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
-  assert.equal(fixture.reconciled(), 0)
-})
-
-test('advanced plugin inherit clears all parent and child flags while preserving other groups', async () => {
+test('advanced plugin inherit clears every skill override for that plugin while preserving other groups', async () => {
   const fixture = blockedActivationFixture({ workspaceOverrides: { pluginSkills: {
     'market/plugin/one': false, 'market/plugin/stale': true, 'unrelated/plugin/keep': true,
   } } })
@@ -906,7 +880,7 @@ test('advanced plugin inherit clears all parent and child flags while preserving
   const result = await service.setWorkspacePluginEnabled({ workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin', mode: 'inherit' })
   assert.deepEqual(result, { workspaceId: 'workspace-a', key: 'market/plugin', mode: 'inherit' })
   assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), {
-    ...fixture.workspaceConfig, plugins: { 'unrelated/plugin': false }, pluginSkills: { 'unrelated/plugin/keep': true },
+    ...fixture.workspaceConfig, pluginSkills: { 'unrelated/plugin/keep': true },
   })
   assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.skillName).sort(), ['four', 'one', 'two'])
   assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
@@ -926,7 +900,6 @@ for (const globalEnabled of [true, false]) {
     await service.setWorkspaceSkillEnabled({ workspaceId: 'workspace-a', fullName, standalone: true, mode: globalEnabled ? 'enabled' : 'disabled' })
     let current = await runtime.loadWorkspaceConfig('/workspace-a')
     assert.deepEqual(current.standaloneSkills, { 'unrelated/standalone-skills/keep': true })
-    assert.deepEqual(current.plugins, fixture.workspaceConfig.plugins)
     assert.deepEqual(current.pluginSkills, fixture.workspaceConfig.pluginSkills)
     assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
     await service.setSkillEnabled({ fullName, standalone: true, enabled: !globalEnabled })
@@ -950,9 +923,7 @@ test('shared-key state views deduplicate child full names while batch commands s
   assert.equal(views.length, 1)
   assert.equal(views[0].skills.length, 5)
   assert.equal(new Set(views[0].skills.map((skill) => skill.fullName)).size, 5)
-  assert.equal(views[0].enabled, false)
   assert.equal(views[0].activationState, 'disabled')
-  assert.equal(views[0].globalEnabled, false)
 })
 
 for (const firstDeclaresHooks of [true, false]) {
@@ -987,7 +958,7 @@ for (const firstDeclaresHooks of [true, false]) {
     assert.deepEqual(inspected, firstDeclaresHooks ? [root + 'plugin'] : [])
     assert.deepEqual(view.hooks, firstDeclaresHooks ? {
       available: true, found: true, count: 1, enabled: true, active: true,
-      needsApproval: false, error: null, scope: 'global',
+      needsApproval: false, error: null,
     } : null)
   })
 }
@@ -1001,8 +972,6 @@ test('zero-skill plugin activation is disabled independently of installation', a
   const view = (await fixture.service.getState()).markets[0].plugins[0]
   assert.equal(view.installed, true)
   assert.equal(view.skills.length, 0)
-  assert.equal(view.enabled, false)
-  assert.equal(view.globalEnabled, false)
   assert.equal(view.activationState, 'disabled')
   assert.equal((await fixture.service.setPluginSkillsEnabled({ marketId: 'market', pluginName: 'plugin', enabled: true })).count, 0)
 })
@@ -1023,7 +992,6 @@ test('does not duplicate a plugin skill enabled both globally and in the workspa
     [marketDir + '/plugins/plugin/plugin.json']: JSON.stringify({ name: 'plugin' }),
     [marketDir + '/plugins/plugin/skills/one/SKILL.md']: skillDoc('one'),
     '/workspace-a/.dsh/agent-plugin-market.json': JSON.stringify({
-      plugins: {},
       pluginSkills: { 'market/plugin/one': true },
       standaloneSkills: {},
     }),
@@ -1057,7 +1025,7 @@ test('ignores a workspace config reached through a .dsh symlink', async () => {
     [marketDir + '/marketplace.json']: JSON.stringify({ plugins: [{ name: 'plugin', source: '.' }] }),
     [marketDir + '/plugin.json']: JSON.stringify({ name: 'plugin' }),
     [marketDir + '/skills/plugin/SKILL.md']: skillDoc('plugin'),
-    '/outside/agent-plugin-market.json': JSON.stringify({ plugins: { 'market/plugin': false } }),
+    '/outside/agent-plugin-market.json': JSON.stringify({ pluginSkills: { 'market/plugin/plugin': false } }),
   }, {
     '/workspace/.dsh': '/outside',
   })
@@ -1079,7 +1047,7 @@ test('ignores a workspace config file symlink', async () => {
     [marketDir + '/plugin.json']: JSON.stringify({ name: 'plugin' }),
     [marketDir + '/skills/plugin/SKILL.md']: skillDoc('plugin'),
     '/workspace/.dsh/.keep': '',
-    '/outside/agent-plugin-market.json': JSON.stringify({ plugins: { 'market/plugin': false } }),
+    '/outside/agent-plugin-market.json': JSON.stringify({ pluginSkills: { 'market/plugin/plugin': false } }),
   }, {
     '/workspace/.dsh/agent-plugin-market.json': '/outside/agent-plugin-market.json',
   })
@@ -1115,15 +1083,14 @@ test('writes new workspace configs with create-if-absent intent', async () => {
     dshHome: '/dsh',
   })
 
-  await runtime.saveWorkspaceConfig('/workspace', { plugins: { 'market/plugin': true } })
+  await runtime.saveWorkspaceConfig('/workspace', { pluginSkills: { 'market/plugin/one': true } })
 
   assert.equal(writes[0].path, '/workspace/.dsh/agent-plugin-market.json')
   assert.deepEqual(writes[0].expected, { kind: 'createIfAbsent' })
   assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/workspace' })
   assert.deepEqual(JSON.parse(writes[0].content), {
     version: 1,
-    plugins: { 'market/plugin': true },
-    pluginSkills: {},
+    pluginSkills: { 'market/plugin/one': true },
     standaloneSkills: {},
   })
 })
@@ -1142,7 +1109,6 @@ test('writes existing workspace configs with replace-if-version intent', async (
   assert.deepEqual(writes[0].sandboxPolicy, { mode: 'workspace-write', workspaceRoot: '/workspace' })
   assert.deepEqual(JSON.parse(writes[0].content), {
     version: 1,
-    plugins: {},
     pluginSkills: {},
     standaloneSkills: { 'market/standalone-skills/skill': true },
   })
@@ -1185,7 +1151,7 @@ function serviceRuntime({ standaloneSkills = [] } = {}) {
         Object.assign(config, next)
       },
       async loadWorkspaceConfig(path) {
-        return workspaceConfigs[path] || { version: 1, plugins: {}, pluginSkills: {}, standaloneSkills: {} }
+        return workspaceConfigs[path] || { version: 1, pluginSkills: {}, standaloneSkills: {} }
       },
       async saveWorkspaceConfig(path, next) {
         workspaceConfigs[path] = next
@@ -1450,7 +1416,6 @@ test('exposes standalone skills separately from plugin skills', async () => {
     name: 'standalone',
     fullName: 'market/standalone-skills/standalone',
     description: 'Test standalone skill.',
-    whenToUse: null,
     globalEnabled: false,
     workspaceOverride: null,
     enabled: false,
@@ -1497,8 +1462,11 @@ test('toggles one standalone skill without changing plugin state', async () => {
   assert.deepEqual(fixture.config.enabledStandaloneSkills, {})
 })
 
-test('writes and clears workspace overrides without changing global defaults', async () => {
-  const fixture = blockedActivationFixture({ installed: false })
+test('writes and clears sparse workspace overrides without changing global defaults', async () => {
+  const fixture = blockedActivationFixture({
+    installed: false,
+    additionalFiles: { '/dsh/agent-plugin-market/markets/market/skills/standalone/SKILL.md': skillDoc('standalone') },
+  })
   const { service, runtime } = fixture
   assert.deepEqual(await service.setWorkspacePluginEnabled({
     workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin', mode: 'enabled',
@@ -1506,20 +1474,40 @@ test('writes and clears workspace overrides without changing global defaults', a
   await service.setWorkspaceSkillEnabled({
     workspaceId: 'workspace-a', fullName: 'market/plugin/one', mode: 'disabled',
   })
+  await service.setWorkspaceSkillEnabled({
+    workspaceId: 'workspace-a', fullName: 'market/standalone-skills/standalone', standalone: true, mode: 'enabled',
+  })
 
   assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), {
-    ...fixture.workspaceConfig,
-    plugins: { 'unrelated/plugin': false },
+    version: 1,
     pluginSkills: {
       'market/plugin/two': true, 'market/plugin/three': true, 'market/plugin/four': true,
       'unrelated/plugin/keep': true,
     },
+    standaloneSkills: {
+      'unrelated/standalone-skills/keep': true,
+      'market/standalone-skills/standalone': true,
+    },
   })
   assert.deepEqual(await runtime.loadConfig(), fixture.globalConfig)
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), [
+    'market/plugin/four', 'market/plugin/three', 'market/plugin/two',
+    'market/standalone-skills/standalone',
+  ])
 
-  await service.clearWorkspaceOverrides({ workspaceId: 'workspace-a' })
-  assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), { version: 1, plugins: {}, pluginSkills: {}, standaloneSkills: {} })
-  assert.equal(fixture.invalidated(), 3)
+  await service.setWorkspacePluginEnabled({ workspaceId: 'workspace-a', marketId: 'market', pluginName: 'plugin', mode: 'inherit' })
+  assert.deepEqual(await runtime.loadWorkspaceConfig('/workspace-a'), {
+    version: 1,
+    pluginSkills: { 'unrelated/plugin/keep': true },
+    standaloneSkills: {
+      'unrelated/standalone-skills/keep': true,
+      'market/standalone-skills/standalone': true,
+    },
+  })
+  assert.deepEqual((await runtime.collectSkills({ cwd: '/workspace-a' })).map((skill) => skill.fullName), [
+    'market/standalone-skills/standalone',
+  ])
+  assert.equal(fixture.invalidated(), 4)
   await assert.rejects(() => service.setWorkspacePluginEnabled({ workspaceId: 'missing', marketId: 'market', pluginName: 'plugin', mode: 'enabled' }), /工作区/)
 })
 
@@ -1539,5 +1527,5 @@ test('hides home workspace entries from configurable workspace state', async () 
   })
 
   assert.deepEqual((await service.getState()).workspaces, [repo])
-  await assert.rejects(() => service.clearWorkspaceOverrides({ workspaceId: 'home' }), /工作区不存在或已移除/)
+  await assert.rejects(() => service.setWorkspacePluginEnabled({ workspaceId: 'home', marketId: 'market', pluginName: 'plugin', mode: 'enabled' }), /工作区不存在或已移除/)
 })

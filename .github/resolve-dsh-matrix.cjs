@@ -1,4 +1,6 @@
-// Resolve channel versions once per CI run and retain uncovered range endpoints.
+// Resolve one CI smoke target per distinct DSH version: the declared range
+// minimum plus the npm `latest` and `next` channels. The CI preflight enforces
+// the declared range, so versions outside it fail the smoke job instead.
 const { appendFileSync, readFileSync } = require('node:fs')
 const { execFileSync } = require('node:child_process')
 
@@ -12,22 +14,26 @@ function isVersion(version) {
 }
 
 function buildTargets(range, tags) {
-  const bounds = typeof range === 'string' && /^>=(\S+)\s+<=(\S+)$/.exec(range.trim())
+  const bounds = typeof range === 'string' && /^>=(\S+)\s+<=\S+$/.exec(range.trim())
   if (!bounds) throw new Error('engines.dsh must be one bounded inclusive range')
-  const [minimum, maximum] = bounds.slice(1)
-  const latest = tags?.latest
-  const next = tags?.next
-  for (const [label, version] of Object.entries({ minimum, maximum, latest, next })) {
+  const candidates = [
+    { label: 'minimum', version: bounds[1] },
+    { label: 'latest', version: tags?.latest },
+    { label: 'next', version: tags?.next },
+  ]
+  for (const { label, version } of candidates) {
     if (!isVersion(version)) {
       throw new Error(`invalid DSH ${label} version: ${String(version)}`)
     }
   }
 
+  const seen = new Set()
   const targets = []
-  if (minimum !== latest && minimum !== next) targets.push({ label: 'minimum', version: minimum })
-  if (maximum !== minimum && maximum !== latest && maximum !== next) targets.push({ label: 'maximum', version: maximum })
-  // Keep both channels even when they currently resolve to the same version.
-  targets.push({ label: 'latest', version: latest }, { label: 'next', version: next })
+  for (const { label, version } of candidates) {
+    if (seen.has(version)) continue
+    seen.add(version)
+    targets.push({ label, version })
+  }
   return targets
 }
 

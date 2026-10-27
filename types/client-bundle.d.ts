@@ -30,50 +30,46 @@ declare global {
 
   interface CatalogSkill {
     name: string
-    fullName?: string
-    description?: string
-    enabled?: boolean
-    globalEnabled?: boolean
-    workspaceOverride?: boolean | null
+    fullName: string
+    description: string
+    enabled: boolean
+    globalEnabled: boolean
+    workspaceOverride: boolean | null
   }
 
   interface CatalogHooks {
-    available?: boolean
-    found?: boolean
-    active?: boolean
-    enabled?: boolean
-    error?: string
-    needsApproval?: boolean
-    count?: number
-    scope?: 'global'
+    available: boolean
+    found: boolean
+    active: boolean
+    enabled: boolean
+    error: string | null
+    needsApproval: boolean
+    count: number
   }
 
   interface CatalogPlugin {
     name: string
-    title?: string
-    description?: string
-    error?: string
-    sourceType?: string
-    installed?: boolean
-    globalEnabled?: boolean
-    workspaceOverride?: boolean | null
-    enabled?: boolean
-    activationState?: 'enabled' | 'partial' | 'disabled'
-    unsupported?: boolean
-    skills?: CatalogSkill[]
-    hooks?: CatalogHooks | null
+    title: string
+    description: string
+    error: string | null
+    sourceType: string
+    installed: boolean
+    activationState: 'enabled' | 'partial' | 'disabled'
+    unsupported: boolean
+    skills: CatalogSkill[]
+    hooks: CatalogHooks | null
   }
 
   interface CatalogMarket {
     id: string
-    name: string
+    name?: string
     repo: string
-    refType?: string
-    ref?: string
-    description?: string
-    manifestFound?: boolean
-    plugins?: CatalogPlugin[]
-    standaloneSkills?: CatalogSkill[]
+    refType: string
+    ref: string | null
+    description: string
+    manifestFound: boolean
+    plugins: CatalogPlugin[]
+    standaloneSkills: CatalogSkill[]
   }
 
   interface WorkspaceItem {
@@ -83,7 +79,7 @@ declare global {
   }
 
   interface ConfigScope {
-    kind?: 'global' | 'workspace'
+    kind: 'global' | 'workspace'
     id?: string
     path?: string
     overrideCount?: number
@@ -105,12 +101,12 @@ declare global {
   }
 
   interface MarketState {
-    markets?: CatalogMarket[]
-    workspaces?: WorkspaceItem[]
-    scope?: ConfigScope
-    hooksBridge?: {
-      available?: boolean
-      installCommand?: string
+    markets: CatalogMarket[]
+    workspaces: WorkspaceItem[]
+    scope: ConfigScope
+    hooksBridge: {
+      available: boolean
+      installCommand: string
     }
   }
 
