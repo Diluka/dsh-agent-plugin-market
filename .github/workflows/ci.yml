@@ -13,6 +13,19 @@ env:
   DSH_VERSION: 0.2.1-rc.4
 
 jobs:
+  resolve-dsh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - id: matrix
+        run: node .github/resolve-dsh-matrix.cjs
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -39,15 +52,17 @@ jobs:
       - run: git diff --check
 
   dsh-web-smoke:
-    name: 'DSH ${{ matrix.dsh-version }} web smoke (profile hooks deps: ${{ matrix.profile-hooks }})'
+    name: 'DSH ${{ matrix.target.label }} ${{ matrix.target.version }} web smoke (profile hooks deps: ${{ matrix.profile-hooks }})'
+    needs: resolve-dsh
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        dsh-version: [0.2.1-alpha.2, 0.2.1-alpha.3, 0.2.1-alpha.4, 0.2.1-alpha.5, 0.2.1-rc.1, 0.2.1-rc.2, 0.2.1-rc.3, 0.2.1-rc.4]
+        target: ${{ fromJSON(needs.resolve-dsh.outputs.targets) }}
         profile-hooks: [absent, present]
     env:
-      DSH_VERSION: ${{ matrix.dsh-version }}
+      DSH_VERSION: ${{ matrix.target.version }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -63,6 +78,19 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+
+      # Enforce the declared range with the pinned development preflight;
+      # older tested releases may not implement engines.dsh checks themselves.
+      - name: Check declared DSH compatibility
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs'
+          import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
+          if (evaluatePluginCompatibility(manifest, {}, process.env.DSH_VERSION)) {
+            throw new Error(`DSH ${process.env.DSH_VERSION} is outside the declared compatibility range; review the new release`)
+          }
+          JS
 
       - name: Pack plugin
         run: |
@@ -84,7 +112,15 @@ jobs:
           dsh() { pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" "$@"; }
 
           profile="$DSH_HOME/profiles/web"
-          mkdir -p "$profile"
+          # Initialize with the tested CLI before creating the profile manifest.
+          test ! -e "$profile/package.json"
+          bootstrap_log="$RUNNER_TEMP/dsh-bootstrap.log"
+          if ! dsh --profile web --dump-config > "$bootstrap_log" 2>&1; then
+            echo "Failed to initialize the DSH $DSH_VERSION profile"
+            sed -n '1,240p' "$bootstrap_log" | sed -E 's/(token=)[^ )]+/\1<redacted>/g'
+            exit 1
+          fi
+          test -f "$profile/pnpm-workspace.yaml" || { echo 'DSH did not initialize pnpm-workspace.yaml'; exit 1; }
           # Profile plugins must be able to import their optional bridge.
           # Check both actual absence and explicit installation, not CLI inventory.
           packages=("$PLUGIN_TARBALL")
@@ -102,11 +138,6 @@ jobs:
             }
           }
           EOF
-          # Use the target DSH's real profile defaults before installing peers.
-          node --input-type=module - "$profile" <<'JS'
-          import { initProfile } from '@deepseek-ai/dsh-app-boot'
-          initProfile(process.argv[2], [])
-          JS
           pnpm --dir "$profile" add "${packages[@]}"
 
           port=3080
@@ -133,16 +164,20 @@ jobs:
               auth_url="$(sed -nE "s#^dsh web: (http://127[.]0[.]0[.]1:$port/[^ ]*).*#\\1#p" "$log" | tail -n 1)"
             fi
 
-            if [ -n "$auth_url" ] && curl -fsSL -c "$cookie_jar" -b "$cookie_jar" "$auth_url" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
-              kill -0 "$pid"
+            if [ -n "$auth_url" ] && curl --connect-timeout 2 --max-time 5 -fsSL -c "$cookie_jar" -b "$cookie_jar" "$auth_url" >"$RUNNER_TEMP/dsh-index.html" 2>/dev/null; then
+              if ! kill -0 "$pid" 2>/dev/null; then
+                echo 'DSH exited after serving the shell'
+                redact_log
+                exit 1
+              fi
               # A served shell alone does not prove the packed plugin activated.
               state="$RUNNER_TEMP/market-state-$PROFILE_HOOKS.json"
-              curl -fsS -b "$cookie_jar" \
+              if curl --connect-timeout 2 --max-time 5 -fsS -b "$cookie_jar" \
                 -H 'Content-Type: application/json' \
                 -H "Origin: http://127.0.0.1:$port" \
                 --data '{"type":"client-request","rpcId":"market-smoke","method":"get-state","payload":{}}' \
-                "http://127.0.0.1:$port/agent-plugin-market/get-state" >"$state"
-              node --input-type=module - "$state" <<'JS'
+                "http://127.0.0.1:$port/agent-plugin-market/get-state" >"$state" 2>/dev/null; then
+                node --input-type=module - "$state" <<'JS'
           import assert from 'node:assert/strict'
           import { readFileSync } from 'node:fs'
           const response = JSON.parse(readFileSync(process.argv[2], 'utf8'))
@@ -155,7 +190,8 @@ jobs:
           assert.equal(response.result.value.hooksBridge.installCommand,
             `pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@${process.env.DSH_VERSION} @deepseek-ai/dsh-hook-protocol@${process.env.DSH_VERSION}`)
           JS
-              exit 0
+                exit 0
+              fi
             fi
 
             sleep 1

@@ -16,14 +16,14 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 当前开发依赖和适配目标为 DSH `0.2.1-rc.4`（当前 npm `next` 发布线；`latest` 指向 `0.2.1-rc.2`）。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
-包的 `engines.dsh` 逐项声明以下 **8 个已发布版本**，不使用会放行未验证版本的开放范围。它们均兼容当前插件实现，无需历史 API 桥接或修改业务代码；CI 覆盖每版的安装、profile 启动和认证后的市场 RPC。
+包的 `engines.dsh` 使用封顶范围 `>=0.2.1-alpha.2 <=0.2.1-rc.4`，覆盖以下 **8 个已发布版本**。它们均兼容当前插件实现，无需历史 API 桥接或修改业务代码。CI 重点覆盖区间两端及当前 npm `latest`、`next`，不逐版启动所有中间版本。DSH 按 SemVer 将预发布版本纳入比较，因此范围也会接受两端之间可能补发的版本；`rc.5` 和正式版 `0.2.1` 等上界以后的版本不会自动放行。
 
 | DSH 发布线 | 支持版本 |
 | --- | --- |
 | `0.2.1` alpha | `0.2.1-alpha.2`、`0.2.1-alpha.3`、`0.2.1-alpha.4`、`0.2.1-alpha.5` |
 | `0.2.1` rc | `0.2.1-rc.1`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4` |
 
-不改现有实现和 composition 的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。
+不改现有实现和 composition 的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。`alpha.2` 和 `alpha.3` 的预检只读取 DSH peer dependencies，不强制检查 `engines.dsh`；不要依赖旧运行时自动拒绝范围外的版本。
 
 历史支持以实际 API 和 composition 兼容为边界，不为保留更多旧版引入复杂桥接；完全兼容且不需适配的旧版不因年代久远而淘汰。跨 `0.x` 发布线时，通常仅保留上一线最后的小版本。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；升级时同步兼容声明、开发依赖、代表性历史版本的 E2E 和文档，具体策略见 [开发规范](<AGENTS.md#dsh-upgrade-and-compatibility-policy>)。
 
@@ -165,7 +165,7 @@ git diff --check
 - `pnpm lint` 执行 `eslint lib test`；仓库的 ESLint 配置检查 `lib/**/*.js` 和 `test/**/*.js`，并忽略 `test-repos/`。
 - `pnpm test` 执行 Node 原生 `node --test`。运行时扫描测试使用 `@platformatic/vfs` 的内存文件系统，并覆盖技能去重中的符号链接场景。
 - `pnpm typecheck` 执行 `tsc -p tsconfig.json`，以 JavaScript + JSDoc 检查 `lib/**/*.js`，加载 `types/client-bundle.d.ts`，且不生成输出。
-- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。开发依赖和实际安装的必需 DSH peers 统一到目标 `rc.4`，兼容声明由 DSH 的真实 preflight 验证；版本一致性测试确保 E2E 矩阵覆盖声明支持的全部 8 个版本（`alpha.2` 至 `alpha.5`、`rc.1` 至 `rc.4`）。每次 smoke 安装独立固定本插件的通配 peer 和框架 patch 范围，避免版本组混用或安装漂移。Smoke job 使用目标 DSH 的 `initProfile` 初始化临时 profile，采用其默认的 hoisted linker 和禁用 peer 自动安装设置，再通过 pnpm 安装制品，由各测试版本的 CLI 应用包内的 Cordis patch；完成浏览器会话认证后调用市场 `get-state` RPC，确认打包插件已激活，而不只检查 Web 首页可达。矩阵为 `8 个受支持版本 × hooks 依赖 absent/present`，通过实际 RPC 状态分别验证 bridge 缺失时的降级与安装后的可用性，并检查恢复安装命令匹配当前测试运行时；Node 测试继续覆盖审批保留和不挂载 hooks 的降级行为。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
+- CI 启动检查用 `.github/pin-dsh.cjs` 将 CLI 与 profile 子安装中的 DSH 依赖统一到 `DSH_VERSION`，同时固定已验证的 Cordis 配套版本，并使用独立缓存。开发依赖和实际安装的必需 DSH peers 统一到目标 `rc.4`；单元测试使用该版本的 preflight 校验已发布版本及区间边界，这只检验版本匹配，不代表每个历史版本都以相同方式强制检查 `engines.dsh`。每次 CI 先从 npm 一次解析 `@deepseek-ai/dsh` 的 `latest`、`next`，分别测试两个渠道，并覆盖当前有界范围的两端；端点与渠道版本相同时复用渠道测试。每次 smoke 安装独立固定本插件的通配 peer 和框架 patch 范围，避免版本组混用或安装漂移。Smoke job 先用对应版本的 DSH CLI 初始化临时 profile，再通过 pnpm 安装制品并应用包内的 Cordis patch；完成浏览器会话认证后调用市场 `get-state` RPC，确认打包插件已激活，而不只检查 Web 首页可达。当前矩阵为 `3 个目标版本 × hooks 依赖 absent/present`：下界 `alpha.2`、`latest` 的 `rc.2` 和同时作为上界的 `next` 的 `rc.4`。两个渠道分别保留，即使标签指向同一版本也各自测试；渠道超出声明范围时对应测试会失败，提示重新适配，而不会自动扩大支持范围。测试通过实际 RPC 状态验证 bridge 缺失时的降级与安装后的可用性，并检查恢复安装命令匹配当前测试运行时；Node 测试继续覆盖审批保留和不挂载 hooks 的降级行为。升级 CI 目标版本时需一并核验 CLI 与框架配套契约。
 
 ## 架构
 

@@ -55,13 +55,14 @@ repository is not a standalone web application.
 - If an older version's APIs remain fully compatible and need no adaptation, keep
   declaring it supported regardless of its age; do not retire it merely because
   it falls outside a rolling version window.
-- E2E must cover the latest target and representative supported historical
-  versions, including the immediately preceding supported release and meaningful
-  API boundaries. Keep every test installation on its own coherent DSH cohort.
+- E2E must cover both endpoints of each continuous supported range, meaningful
+  API boundaries, and the current npm `latest` and `next` channels separately.
+  Reuse a channel test for a matching endpoint, and keep every installation on
+  its own coherent DSH cohort.
 - Keep `engines.dsh`, dependency pins, CI coverage, runtime installation guidance,
-  and documentation consistent with the verified support set. Do not declare
-  unverified future versions compatible. Keep the plugin version plain SemVer,
-  without encoding the DSH target in a suffix.
+  and documentation consistent. Bound the range at the newest verified release;
+  SemVer also admits unpublished prereleases between the bounds. Keep the plugin
+  version plain SemVer, without encoding the DSH target in a suffix.
 
 ## Development Rules
 
@@ -70,13 +71,13 @@ repository is not a standalone web application.
   calls Host routes through the existing API helper.
 - DSH development dependencies target `0.2.1-rc.4` (npm `next`;
   `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
-  subpackage dist-tags can still point to older cohorts. `engines.dsh` currently
-  explicitly supports all eight published releases from `0.2.1-alpha.2` through
-  `alpha.5` and `rc.1` through `rc.4`; CI E2E covers every release crossed with
-  absent/present hooks dependencies. Their consumed APIs need no historical
-  bridge. Do not replace the explicit list with an open range or change `lib/`
-  merely to widen compatibility. Apply the upgrade policy above when changing
-  this support set.
+  subpackage dist-tags can still point to older cohorts. `engines.dsh` is bounded
+  from `0.2.1-alpha.2` through `0.2.1-rc.4`, covering eight currently published
+  releases and any SemVer prereleases between the bounds. CI E2E covers the
+  range endpoints and the independently resolved `latest` and `next` channels,
+  crossed with absent/present hooks dependencies. Their consumed APIs need no
+  historical bridge. Do not use an open-ended range or change `lib/` merely to
+  widen compatibility. Apply the upgrade policy above when changing this range.
   The unchanged bundle patch sets the Connection provider's inject list to
   `[webStartup, webServer]`. Versions from `0.1.7-alpha.1` through
   `0.2.1-alpha.1` still read `webRuntime` in the upstream Connection config
@@ -84,15 +85,17 @@ repository is not a standalone web application.
   "webRuntime" without inject`, even though the consumed Host methods exist.
   Versions before `0.1.7-alpha.1` also lack `settings.configure()`. Retain these
   concrete boundaries instead of inferring compatibility from API names alone.
-  The Host must inject both `connection` and `webServer`. The bundle patch must
-  also add `webServer` to the `connection` provider row while retaining
-  `webStartup`: Connection RPC getters retain the provider's shadow context.
-  Test with separate sibling Connection and WebServer provider Fibers; providing
-  the WebServer on the root Context hides this guard failure.
+  The `alpha.2` and `alpha.3` preflight ignores `engines.dsh`, so do not assume
+  older runtimes enforce the declared bounds. The Host must inject both
+  `connection` and `webServer`. The bundle patch must also add `webServer` to
+  the `connection` provider row while retaining `webStartup`: Connection RPC
+  getters retain the provider's shadow context. Test with separate sibling
+  Connection and WebServer provider Fibers; providing the WebServer on the root
+  Context hides this guard failure.
 - Keep each CI smoke installation on one DSH release cohort with
   `.github/pin-dsh.cjs` and a fresh step-local pnpm cache. Initialize the smoke
-  profile with the target DSH's `initProfile` before installing dependencies so
-  its pnpm linker and peer settings match the real profile defaults. Apply the
+  profile with the tested DSH CLI before installing dependencies so its pnpm
+  linker and peer settings match that release's profile defaults. Apply the
   hook to both `dlx` and profile child installs; wildcard peers and framework
   patch ranges can drift even when the CLI pins its DSH dependencies. Cross
   the supported runtime versions with absent/present profile-local hooks

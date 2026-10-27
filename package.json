@@ -3,7 +3,7 @@
   "version": "0.12.3",
   "description": "DSH 插件市场：将 git 仓库作为 agent 内容插件市场，加载 Codex / Claude 技能，并以显式授权注册受支持的 Codex hooks。",
   "engines": {
-    "dsh": "0.2.1-alpha.2 || 0.2.1-alpha.3 || 0.2.1-alpha.4 || 0.2.1-alpha.5 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4"
+    "dsh": ">=0.2.1-alpha.2 <=0.2.1-rc.4"
   },
   "type": "module",
   "main": "lib/index.js",
