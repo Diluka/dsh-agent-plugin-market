@@ -1,6 +1,6 @@
-// CI-only release-cohort pinning. DSH 0.2.1-rc.4 uses exact DSH dependencies,
+// CI-only release-cohort pinning. DSH 0.2.1-rc.5 uses exact DSH dependencies,
 // but plugin wildcard peers and framework patch ranges can still drift.
-// DSH 0.2.1-rc.4 targets Cordis 4.0.5, Loader 1.0.6, and Include 1.0.10.
+// DSH 0.2.1-rc.5 targets Cordis 4.0.5, Loader 1.0.6, and Include 1.0.10.
 // Revalidate this baseline together with DSH_VERSION when upgrading CI.
 const frameworkVersions = {
   '@deepseek-ai/cordis': '4.0.5',

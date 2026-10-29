@@ -67,10 +67,10 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies target `0.2.1-rc.4` (npm `next`;
+- DSH development dependencies target `0.2.1-rc.5` (npm `next`;
   `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
   subpackage dist-tags can still point to older cohorts. `engines.dsh` is bounded
-  from `0.2.1-alpha.2` through `0.2.1-rc.4`, the range that works with the
+  from `0.2.1-alpha.2` through `0.2.1-rc.5`, the range that works with the
   current implementation without version-specific code. `latest` and `next`
   must pass; intermediate releases are best-effort and CI only smoke-tests the
   earliest bound plus both channels, deduplicated by version, crossed with
