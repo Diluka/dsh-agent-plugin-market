@@ -12,10 +12,10 @@ const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta
 const dshVersion = manifest.devDependencies['@deepseek-ai/dsh-agent']
 
 // The declared support range and the currently published channel versions.
-const range = '>=0.2.1-alpha.2 <=0.2.1-rc.4'
+const range = '>=0.2.1-alpha.2 <=0.2.1-rc.5'
 const earliest = '0.2.1-alpha.2'
 const latest = '0.2.1-rc.2'
-const next = '0.2.1-rc.4'
+const next = '0.2.1-rc.5'
 
 function withVersion(version, run) {
   const previous = process.env.DSH_VERSION
@@ -81,7 +81,7 @@ test('buildTargets rejects missing tags, invalid versions, and unbounded ranges'
     assert.throws(() => buildTargets(range, { latest: invalid, next }), /invalid DSH latest version/)
   }
   assert.throws(
-    () => buildTargets('>=0.2.1-alpha.02 <=0.2.1-rc.4', { latest, next }),
+    () => buildTargets('>=0.2.1-alpha.02 <=0.2.1-rc.5', { latest, next }),
     /invalid DSH minimum version/,
   )
 })
@@ -94,7 +94,7 @@ test('the pinned development preflight enforces the declared range boundaries', 
   }
   // SemVer prereleases between the bounds participate even when never published.
   assert.equal(evaluatePluginCompatibility(manifest, {}, '0.2.1-beta.1'), undefined)
-  for (const version of ['0.2.1-alpha.1', '0.2.1-rc.5', '0.2.1', '0.3.0']) {
+  for (const version of ['0.2.1-alpha.1', '0.2.1-rc.6', '0.2.1', '0.3.0']) {
     assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
