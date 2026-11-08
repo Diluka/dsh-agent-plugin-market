@@ -14,11 +14,11 @@ DSH（DeepSeek Harness）插件市场：将 Git 仓库作为 agent 内容市场�
 
 ## 安装
 
-当前开发依赖和适配目标为 DSH `0.2.1-rc.5`（当前 npm `next` 发布线；`latest` 指向 `0.2.1-rc.2`）。npm `latest` 与 `next` 是必须兼容的版本。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
+当前开发依赖和适配目标为 DSH `0.2.2-rc.1`（npm `latest` 与 `next` 均指向该版本）。npm `latest` 与 `next` 是必须兼容的版本。Host 显式注入 `webServer`；bundle patch 同时为 `connection` 提供方补充 `webServer`，保留其原有 `webStartup` 依赖。这同时满足自定义 RPC 通道的调用方依赖及新版 Connection getter 的提供方 shadow 上下文检查，仅修改 Host 的注入列表仍会启动失败。
 
-包的 `engines.dsh` 使用封顶范围 `>=0.2.1-alpha.2 <=0.2.1-rc.5`。`latest` 与 `next` 必须实测兼容；范围内其他已发布版本“随缘兼容”，能延伸多远就延伸多远，不为其引入兼容桥接或业务分支。当前代码自然支持的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。`alpha.2` 和 `alpha.3` 的预检只读取 DSH peer dependencies，不强制检查 `engines.dsh`；不要依赖旧运行时自动拒绝范围外的版本。
+包的 `engines.dsh` 使用封顶范围 `>=0.2.1-alpha.2 <=0.2.2-rc.1`。`latest` 与 `next` 必须实测兼容；范围内其他已发布版本“随缘兼容”，能延伸多远就延伸多远，不为其引入兼容桥接或业务分支。当前代码自然支持的兼容下界是 `0.2.1-alpha.2`，而非仅按方法名是否存在判断：`0.1.7-alpha.1` 至 `0.2.1-alpha.1` 虽然已有所需 Host API，但旧 Web composition 的 `connection` 配置表达式读取 `webRuntime`，与本包现有的 `inject: [webStartup, webServer]` 覆盖不兼容，真实启动会报 `cannot get property "webRuntime" without inject`。更早版本还缺少正在使用的 `settings.configure()`。因此这些版本不声明支持，也不为扩大范围修改当前 bundle patch。`alpha.2` 和 `alpha.3` 的预检只读取 DSH peer dependencies，不强制检查 `engines.dsh`；不要依赖旧运行时自动拒绝范围外的版本。从 `0.2.2-rc.1` 起 DSH 的框架基线是 Cordis 4.1.0 / Loader 1.1.0 / Include 1.1.0；升级 DSH 时需重新验证该伴随基线，框架 API 变化可能破坏旧 app-boot 消费者。
 
-CI 只验证声明范围的**最早版本**、npm `latest` 和 npm `next`，按版本去重；同一版本不会重复启动。`next` 超出上界时对应 smoke job 的预检会失败并提示重新适配，不保留未经验证的上界目标。DSH 按 SemVer 将预发布版本纳入比较，因此范围也会接受两端之间可能补发的版本；`rc.6` 和正式版 `0.2.1` 等上界以后的版本不会自动放行。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；升级时同步兼容声明、开发依赖、代表性 smoke 目标和文档，具体策略见 [开发规范](<AGENTS.md#dsh-upgrade-and-compatibility-policy>)。
+CI 只验证声明范围的**最早版本**、npm `latest` 和 npm `next`，按版本去重；同一版本不会重复启动。`next` 超出上界时对应 smoke job 的预检会失败并提示重新适配，不保留未经验证的上界目标。DSH 按 SemVer 将预发布版本纳入比较，因此范围也会接受两端之间可能补发的版本；`0.2.2-rc.2`、正式版 `0.2.2` 和 `0.3.0` 等上界以后的版本不会自动放行。插件自身版本使用普通 SemVer（不携带 DSH 目标后缀）；升级时同步兼容声明、开发依赖、代表性 smoke 目标和文档，具体策略见 [开发规范](<AGENTS.md#dsh-upgrade-and-compatibility-policy>)。
 
 在 DSH Web 侧边栏「插件」中添加并安装 `dsh-agent-plugin-market` bundle。安装后从工作区列表上方的「技能与挂钩」或设置页同名区段管理市场。包的 `cordis.patch.yml` 将 Host 插件加入 web profile，`package.json` 中的 `dsh.client` 声明加载浏览器端设置页。
 
@@ -26,10 +26,10 @@ CI 只验证声明范围的**最早版本**、npm `latest` 和 npm `next`，按�
 
 ### 启用 Codex hooks（可选）
 
-Codex bridge 必须能从插件的实际安装环境导入，不能因 CLI 清单中出现该包就假定可用；是否可用以市场 RPC 返回的实际状态为准。bridge 可用不代表 hooks 已授权，仍需设置页的双重确认。缺失时，设置页按必需 peer `@deepseek-ai/dsh-home-paths` 的实际安装版本显示同一 DSH 版本组的安装命令，避免在历史运行时上误装目标版本的 bridge。对于 `rc.5`，在运行于目标 profile 的 DSH shell 中执行：
+Codex bridge 必须能从插件的实际安装环境导入，不能因 CLI 清单中出现该包就假定可用；是否可用以市场 RPC 返回的实际状态为准。bridge 可用不代表 hooks 已授权，仍需设置页的双重确认。缺失时，设置页按必需 peer `@deepseek-ai/dsh-home-paths` 的实际安装版本显示同一 DSH 版本组的安装命令，避免在历史运行时上误装目标版本的 bridge。对于 `0.2.2-rc.1`，在运行于目标 profile 的 DSH shell 中执行：
 
 ```bash
-pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.2.1-rc.5 @deepseek-ai/dsh-hook-protocol@0.2.1-rc.5
+pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.2.2-rc.1 @deepseek-ai/dsh-hook-protocol@0.2.2-rc.1
 ```
 
 其他受支持版本使用设置页按当前运行版本显示的同版本命令。安装后按运行时提示重载；若提示必须重启，再重启 DSH。bridge 是可选运行时依赖，不是可从侧边栏「插件」独立安装或加入 profile bundle 列表的 bundle。

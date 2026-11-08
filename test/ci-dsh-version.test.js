@@ -12,10 +12,11 @@ const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta
 const dshVersion = manifest.devDependencies['@deepseek-ai/dsh-agent']
 
 // The declared support range and the currently published channel versions.
-const range = '>=0.2.1-alpha.2 <=0.2.1-rc.5'
+const range = '>=0.2.1-alpha.2 <=0.2.2-rc.1'
 const earliest = '0.2.1-alpha.2'
-const latest = '0.2.1-rc.2'
-const next = '0.2.1-rc.5'
+// Both channels currently resolve to the same release, so the matrix dedupes them.
+const latest = '0.2.2-rc.1'
+const next = '0.2.2-rc.1'
 
 function withVersion(version, run) {
   const previous = process.env.DSH_VERSION
@@ -56,7 +57,6 @@ test('buildTargets expands the declared minimum and both release channels', () =
   assert.deepEqual(buildTargets(range, { latest, next }), [
     { label: 'minimum', version: earliest },
     { label: 'latest', version: latest },
-    { label: 'next', version: next },
   ])
 })
 
@@ -89,12 +89,11 @@ test('buildTargets rejects missing tags, invalid versions, and unbounded ranges'
 test('the pinned development preflight enforces the declared range boundaries', () => {
   // This only checks the range preflight contract used by CI; it does not claim
   // per-version E2E verification of every release inside the range.
-  for (const version of [earliest, latest, next]) {
+  for (const version of [earliest, latest, next, '0.2.1-beta.1', '0.2.1', '0.2.2-alpha.1']) {
     assert.equal(evaluatePluginCompatibility(manifest, {}, version), undefined, version)
   }
-  // SemVer prereleases between the bounds participate even when never published.
-  assert.equal(evaluatePluginCompatibility(manifest, {}, '0.2.1-beta.1'), undefined)
-  for (const version of ['0.2.1-alpha.1', '0.2.1-rc.6', '0.2.1', '0.3.0']) {
+  // Versions outside the closed interval are rejected.
+  for (const version of ['0.2.1-alpha.1', '0.2.2-rc.2', '0.2.2', '0.3.0']) {
     assert.ok(evaluatePluginCompatibility(manifest, {}, version), version)
   }
 })
@@ -125,9 +124,9 @@ test('CI pins the entire DSH dependency cohort without changing unrelated packag
     assert.equal(pkg.optionalDependencies['@deepseek-ai/dsh-hooks-codex'], dshVersion)
     assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-system-prompt'], dshVersion)
     assert.equal(pkg.devDependencies['@deepseek-ai/dsh-tools'], dshVersion)
-    assert.equal(pkg.dependencies['@deepseek-ai/cordis'], '4.0.5')
+    assert.equal(pkg.dependencies['@deepseek-ai/cordis'], '4.1.0')
     assert.equal(pkg.dependencies['js-yaml'], '^4.2.0')
-    assert.equal(pkg.peerDependencies['@deepseek-ai/schemastery'], '3.18.5')
+    assert.equal(pkg.peerDependencies['@deepseek-ai/schemastery'], '3.19.0')
     assert.equal(pkg.peerDependencies['dsh-agent-plugin-market'], '*')
     assert.equal(pkg.devDependencies['@deepseek-ai/dshfake'], '1.0.0')
     assert.equal(pkg.peerDependenciesMeta['@deepseek-ai/dsh-hooks-codex'].optional, true)
@@ -138,13 +137,13 @@ test('CI pins the entire DSH dependency cohort without changing unrelated packag
 test('CI pins the compatible Cordis companions used by the target DSH cohort', () => {
   withVersion(dshVersion, () => {
     const expected = {
-      '@deepseek-ai/cordis': '4.0.5',
-      '@deepseek-ai/cordis-plugin-group': '1.0.5',
-      '@deepseek-ai/cordis-plugin-include': '1.0.10',
-      '@deepseek-ai/cordis-plugin-loader': '1.0.6',
-      '@deepseek-ai/cordis-plugin-timer': '1.1.7',
-      '@deepseek-ai/cosmokit': '1.8.6',
-      '@deepseek-ai/schemastery': '3.18.5',
+      '@deepseek-ai/cordis': '4.1.0',
+      '@deepseek-ai/cordis-plugin-group': '1.1.0',
+      '@deepseek-ai/cordis-plugin-include': '1.1.0',
+      '@deepseek-ai/cordis-plugin-loader': '1.1.0',
+      '@deepseek-ai/cordis-plugin-timer': '1.2.0',
+      '@deepseek-ai/cosmokit': '1.9.0',
+      '@deepseek-ai/schemastery': '3.19.0',
     }
     const pkg = { dependencies: Object.fromEntries(Object.keys(expected).map(name => [name, '*'])) }
     assert.deepEqual(hooks.readPackage(pkg).dependencies, expected)
