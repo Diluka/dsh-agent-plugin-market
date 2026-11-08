@@ -67,10 +67,10 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies target `0.2.1-rc.5` (npm `next`;
-  `latest` targets `0.2.1-rc.2`). Pin each DSH package explicitly; individual
+- DSH development dependencies target `0.2.2-rc.1` (npm `latest` and
+  `next` both point at it). Pin each DSH package explicitly; individual
   subpackage dist-tags can still point to older cohorts. `engines.dsh` is bounded
-  from `0.2.1-alpha.2` through `0.2.1-rc.5`, the range that works with the
+  from `0.2.1-alpha.2` through `0.2.2-rc.1`, the range that works with the
   current implementation without version-specific code. `latest` and `next`
   must pass; intermediate releases are best-effort and CI only smoke-tests the
   earliest bound plus both channels, deduplicated by version, crossed with
@@ -103,7 +103,7 @@ repository is not a standalone web application.
   instead of assuming CLI dependencies are importable by profile plugins. Do
   not add the bridge to `dsh.profile.bundles`; it has no bundle declaration.
   Retain Node downgrade tests for bridge unavailability.
-  Revalidate the Cordis 4.0.5 / Loader 1.0.6 / Include 1.0.10 companion baseline
+  Revalidate the Cordis 4.1.0 / Loader 1.1.0 / Include 1.1.0 companion baseline
   when upgrading DSH; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
   `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences
