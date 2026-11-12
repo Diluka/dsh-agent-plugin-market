@@ -46,18 +46,19 @@ repository is not a standalone web application.
 
 - npm `latest` and `next` are the required compatibility targets: both must work
   against the current implementation.
-- `engines.dsh` declares a bounded best-effort range. Extend the lower bound as
-  far as the current implementation naturally works, without version-specific
-  compatibility code. Releases inside the range other than `latest` and `next`
-  are best-effort: do not add bridges or parallel implementations to retain one.
-  If a release needs ad-hoc compatibility work to start, drop it from the range
-  instead and record the concrete incompatibility boundary.
+- `engines.dsh` declares only a minimum, with no upper bound. Assume future DSH
+  releases are supported until an incompatibility is observed; this is not a
+  guarantee that untested releases work. Extend the lower bound as far as the
+  current implementation naturally works without version-specific compatibility
+  code. Historical releases other than `latest` and `next` are best-effort: do
+  not add bridges or parallel implementations to retain one. If an older release
+  needs ad-hoc compatibility work to start, exclude it and record the boundary.
 - CI covers the earliest declared supported release, npm `latest`, and npm
   `next`, deduplicated by version, crossed with absent/present hooks
   dependencies. Add another release only when it is a meaningful API boundary.
-- If `next` moves above the declared upper bound, the smoke preflight fails and
-  prompts an adaptation: verify the new release, then extend the bound. Do not
-  keep an untested maximum target.
+- Each CI run resolves and tests the current `latest` and `next`. A tag change
+  alone does not trigger CI. Investigate actual failures rather than rejecting
+  untested future versions solely by version number.
 - Keep `engines.dsh`, dependency pins, CI coverage, runtime installation
   guidance, and documentation consistent. Keep the plugin version plain SemVer,
   without encoding the DSH target in a suffix.
@@ -67,16 +68,14 @@ repository is not a standalone web application.
 - Keep Host and Client responsibilities separate. Host code owns filesystem,
   Git, persistent state, hooks, and RPC. Client code owns settings-page UI and
   calls Host routes through the existing API helper.
-- DSH development dependencies target `0.2.2-rc.1` (npm `latest` and
-  `next` both point at it). Pin each DSH package explicitly; individual
-  subpackage dist-tags can still point to older cohorts. `engines.dsh` is bounded
-  from `0.2.1-alpha.2` through `0.2.2-rc.1`, the range that works with the
-  current implementation without version-specific code. `latest` and `next`
-  must pass; intermediate releases are best-effort and CI only smoke-tests the
-  earliest bound plus both channels, deduplicated by version, crossed with
-  absent/present hooks dependencies. Do not use an open-ended range or change
-  `lib/` merely to widen compatibility. Apply the compatibility policy above
-  when changing this range.
+- DSH development dependencies target `0.2.2-rc.2` (npm `next`; npm
+  `latest` is `0.2.2-rc.1` at this revision). Pin each DSH package explicitly;
+  individual subpackage dist-tags can still point to older cohorts. `engines.dsh`
+  starts at `0.2.1-alpha.2` and has no upper bound. `latest` and `next` must
+  pass; other releases are best-effort and CI only smoke-tests the minimum plus
+  both channels, deduplicated by version, crossed with absent/present hooks
+  dependencies. Do not change `lib/` merely to widen historical compatibility.
+  Apply the compatibility policy above when changing this range.
   The unchanged bundle patch sets the Connection provider's inject list to
   `[webStartup, webServer]`. Versions from `0.1.7-alpha.1` through
   `0.2.1-alpha.1` still read `webRuntime` in the upstream Connection config
@@ -96,15 +95,15 @@ repository is not a standalone web application.
   `.github/pin-dsh.cjs` and a fresh step-local pnpm cache. Initialize the smoke
   profile with the tested DSH CLI before installing dependencies so its pnpm
   linker and peer settings match that release's profile defaults. Apply the
-  hook to both `dlx` and profile child installs; wildcard peers and framework
-  patch ranges can drift even when the CLI pins its DSH dependencies. Cross
-  the smoke targets with absent/present profile-local hooks dependencies, and
+  hook to both `dlx` and profile child installs to pin wildcard DSH peers; retain
+  each release's published framework ranges instead of forcing a newer baseline.
+  Cross the smoke targets with absent/present profile-local hooks dependencies, and
   verify actual bridge availability through the authenticated market RPC
   instead of assuming CLI dependencies are importable by profile plugins. Do
   not add the bridge to `dsh.profile.bundles`; it has no bundle declaration.
   Retain Node downgrade tests for bridge unavailability.
-  Revalidate the Cordis 4.1.0 / Loader 1.1.0 / Include 1.1.0 companion baseline
-  when upgrading DSH; newer framework APIs can break older app-boot consumers.
+  Revalidate the framework versions resolved for each tested DSH cohort when
+  upgrading; newer framework APIs can break older app-boot consumers.
 - Expose tool and prompt switches in the native plugin configuration's
   `Agent 插件市场` / `功能` group, backed by DSH settings. Both preferences
   default to enabled; disabling tools also suppresses their guidance, and home
@@ -192,16 +191,12 @@ registered market and marker data after validation.
 
 Read the named Harness skill before beginning the matching work:
 
-- Cordis Host/Client, slots, services, or runtime plugin work: read
-  `cordis-plugin-development`.
-- `cordis.patch.yml`, profile composition, or preset changes: read
-  `editing-cordis-compositions`.
+- DSH plugin work, package APIs, version upgrades, Host/Client services, slots,
+  composition, or presets: read `dsh-doc` and its relevant references.
 - GUI testing or screenshots: read `agent-browser`, then run
   `agent-browser skills get core`.
-- DSH package APIs, hook protocol behavior, or version contracts: read
-  `contract-verification`.
 - Dependency or workspace package-manager changes: read `pnpm`.
-- Documentation changes: read `documentation`.
+- Documentation changes: follow the applicable documentation skill when available.
 - Creating a commit: read `git-commit`.
 
 ## Git Delivery
