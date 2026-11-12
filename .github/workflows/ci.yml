@@ -87,7 +87,7 @@ jobs:
           import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
           const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
           if (evaluatePluginCompatibility(manifest, {}, process.env.DSH_VERSION)) {
-            throw new Error(`DSH ${process.env.DSH_VERSION} is outside the declared compatibility range; review the new release`)
+            throw new Error(`DSH ${process.env.DSH_VERSION} is incompatible with the declared minimum`)
           }
           JS
 
@@ -104,8 +104,8 @@ jobs:
           set -euo pipefail
 
           export DSH_HOME="$RUNNER_TEMP/dsh-home-$PROFILE_HOOKS"
-          # Pin wildcard plugin peers and framework companions in both dlx and
-          # the profile's child pnpm installs to the tested DSH release cohort.
+          # Pin DSH package versions in both dlx and the profile's child pnpm
+          # installs, retaining each release's published framework ranges.
           export npm_config_global_pnpmfile="$GITHUB_WORKSPACE/.github/pin-dsh.cjs"
           export npm_config_cache_dir="$RUNNER_TEMP/dsh-smoke-cache-$PROFILE_HOOKS"
           dsh() { pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" "$@"; }

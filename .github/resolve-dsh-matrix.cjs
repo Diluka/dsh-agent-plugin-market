@@ -14,10 +14,10 @@ function isVersion(version) {
 }
 
 function buildTargets(range, tags) {
-  const bounds = typeof range === 'string' && /^>=(\S+)\s+<=\S+$/.exec(range.trim())
-  if (!bounds) throw new Error('engines.dsh must be one bounded inclusive range')
+  const minimum = typeof range === 'string' && /^>=(\S+)$/.exec(range.trim())
+  if (!minimum) throw new Error('engines.dsh must declare one inclusive minimum without an upper bound')
   const candidates = [
-    { label: 'minimum', version: bounds[1] },
+    { label: 'minimum', version: minimum[1] },
     { label: 'latest', version: tags?.latest },
     { label: 'next', version: tags?.next },
   ]
