@@ -1340,7 +1340,8 @@ test('changes an existing market to a shallow commit checkout', async () => {
     onSkillsChanged() {},
   })
 
-  await service.setMarketRef({ marketId: 'market', refType: 'commit', ref: 'abc1234' })
+  const ref = '1A2B3C4D5E6F7890ABCDEF1234567890ABCDEF12'
+  await service.setMarketRef({ marketId: 'market', refType: 'commit', ref })
 
   const gitCommands = fixture.commands.filter((argv) => argv[0] === 'git')
   const target = gitCommands[0][3]
@@ -1348,10 +1349,28 @@ test('changes an existing market to a shallow commit checkout', async () => {
   assert.deepEqual(gitCommands, [
     ['git', 'init', '--quiet', target],
     ['git', '-C', target, 'remote', 'add', 'origin', 'example/market'],
-    ['git', '-C', target, 'fetch', '--depth', '1', 'origin', 'abc1234'],
+    ['git', '-C', target, 'fetch', '--depth', '1', 'origin', ref.toLowerCase()],
     ['git', '-C', target, 'checkout', '--quiet', 'FETCH_HEAD'],
   ])
-  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: 'commit', ref: 'abc1234' })
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: 'commit', ref: ref.toLowerCase() })
+})
+
+test('rejects commit refs that a depth-1 fetch cannot resolve', async () => {
+  const fixture = refServiceRuntime()
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() {},
+      suspendMarket() {},
+      resumeMarket() {},
+    },
+    onSkillsChanged() {},
+  })
+
+  await assert.rejects(() => service.setMarketRef({ marketId: 'market', refType: 'commit', ref: 'abc1234' }), /完整的 commit SHA/)
+
+  assert.equal(fixture.commands.some((argv) => argv[0] === 'git'), false)
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'market', repo: 'example/market', refType: 'tag', ref: 'old' })
 })
 
 test('resets an existing market ref to the repository default', async () => {

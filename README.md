@@ -39,7 +39,7 @@ pnpm --dir "$DSH_PROFILE_DIR" add @deepseek-ai/dsh-hooks-codex@0.2.2-rc.2 @deeps
 
 ## 使用
 
-1. **添加市场**：输入 SSH 或 HTTPS Git 仓库地址；可选择默认分支、分支、标签或 commit。选择 commit 时按 SHA 直接浅取该提交，不会克隆完整历史；这要求远端允许按可到达的 SHA 取对象，GitHub、GitLab、Forgejo/Gitea 等默认支持。市场必须提供含 `plugins` 数组的市场清单，或在根 `skills/` 目录中提供至少一个有效的独立技能。
+1. **添加市场**：输入 SSH 或 HTTPS Git 仓库地址；可选择默认分支、分支、标签或 commit。选择 commit 时按 SHA 直接浅取该提交，不会克隆完整历史；因此需要填写完整的 commit SHA，且远端要允许按可到达的 SHA 取对象（GitHub、GitLab、Forgejo/Gitea 等默认支持）。市场必须提供含 `plugins` 数组的市场清单，或在根 `skills/` 目录中提供至少一个有效的独立技能。
 2. **修改市场引用**：已添加市场可随时改为默认分支、指定分支、标签或 commit。保存时会先克隆并校验目标引用，校验通过后替换当前市场 checkout；切回默认分支会删除持久化的 `refType/ref`。
 3. **安装插件**：市场清单的每项插件由 `source` 指向市场内的插件目录；未声明 `source` 时使用仓库根目录。字符串 `source` 和 `{"source":"local","path":"<仓库内路径>"}` 都可用；`./` 指向仓库根。`{"source":"url","url":"..."}` 仅在 URL 规范化后等于当前市场仓库时被视为仓库根插件，其他 URL 来源会标记为不支持。所有路径都必须解析在市场根目录内。
 4. **更新市场**：Host 启动时会依次对默认分支和分支引用执行 `git fetch --depth 1` 并 `git reset --hard FETCH_HEAD`，直接对齐远端最新提交，只在该提交变化时清理被替换的旧对象；失败只记录错误并继续其他市场。标签和 commit 是固定引用，手动或自动更新都会跳过。更新按钮复用相同逻辑。
