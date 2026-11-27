@@ -1160,7 +1160,7 @@ function serviceRuntime({ standaloneSkills = [] } = {}) {
   }
 }
 
-function updateServiceRuntime({ pullFails = false, after = 'after' } = {}) {
+function updateServiceRuntime({ fetchFails = false, after = 'after' } = {}) {
   const config = {
     markets: [{ id: 'market', name: 'market', repo: 'example/market' }],
     installed: {},
@@ -1179,7 +1179,7 @@ function updateServiceRuntime({ pullFails = false, after = 'after' } = {}) {
       async runProc(argv) {
         commands.push(argv)
         if (argv[3] === 'rev-parse') return (revParseCount++ === 0 ? 'before' : after) + '\n'
-        if (argv[3] === 'pull' && pullFails) throw new Error('pull failed')
+        if (argv[3] === 'fetch' && fetchFails) throw new Error('fetch failed')
         return ''
       },
     },
@@ -1239,13 +1239,42 @@ test('updates markets without changing hook approvals directly', async () => {
 
   assert.deepEqual(await service.updateMarket({ marketId: 'market' }), { updated: true })
 
+  assert.deepEqual(fixture.commands, [
+    ['git', '-C', '/markets/market', 'rev-parse', 'HEAD'],
+    ['git', '-C', '/markets/market', 'fetch', '--depth', '1', 'origin'],
+    ['git', '-C', '/markets/market', 'reset', '--hard', 'FETCH_HEAD'],
+    ['git', '-C', '/markets/market', 'rev-parse', 'HEAD'],
+    ['git', '-c', 'gc.reflogExpire=now', '-c', 'gc.reflogExpireUnreachable=now', '-C', '/markets/market', 'gc', '--prune=now', '--quiet'],
+  ])
   assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
   assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
   assert.equal(invalidated, 1)
 })
 
-test('keeps hook approvals when market pull fails', async () => {
-  const fixture = updateServiceRuntime({ pullFails: true })
+test('skips the prune when no new commit was fetched', async () => {
+  const fixture = updateServiceRuntime({ after: 'before' })
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() {},
+      suspendMarket() {},
+      resumeMarket() {},
+    },
+    onSkillsChanged() {},
+  })
+
+  assert.deepEqual(await service.updateMarket({ marketId: 'market' }), { updated: false })
+
+  assert.deepEqual(fixture.commands, [
+    ['git', '-C', '/markets/market', 'rev-parse', 'HEAD'],
+    ['git', '-C', '/markets/market', 'fetch', '--depth', '1', 'origin'],
+    ['git', '-C', '/markets/market', 'reset', '--hard', 'FETCH_HEAD'],
+    ['git', '-C', '/markets/market', 'rev-parse', 'HEAD'],
+  ])
+})
+
+test('keeps hook approvals when market fetch fails', async () => {
+  const fixture = updateServiceRuntime({ fetchFails: true })
   const hookCalls = []
   const service = createMarketService({
     runtime: fixture.runtime,
@@ -1257,8 +1286,12 @@ test('keeps hook approvals when market pull fails', async () => {
     onSkillsChanged() {},
   })
 
-  await assert.rejects(() => service.updateMarket({ marketId: 'market' }), /pull failed/)
+  await assert.rejects(() => service.updateMarket({ marketId: 'market' }), /fetch failed/)
 
+  assert.deepEqual(fixture.commands, [
+    ['git', '-C', '/markets/market', 'rev-parse', 'HEAD'],
+    ['git', '-C', '/markets/market', 'fetch', '--depth', '1', 'origin'],
+  ])
   assert.deepEqual(fixture.config.hookApprovals, { 'market/plugin': { fingerprint: 'approved' } })
   assert.deepEqual(hookCalls, ['suspend:market', 'reconcile', 'resume:market', 'reconcile'])
 })
@@ -1295,7 +1328,7 @@ test('changes an existing market to a branch or tag checkout', async () => {
   }
 })
 
-test('changes an existing market to a commit checkout', async () => {
+test('changes an existing market to a shallow commit checkout', async () => {
   const fixture = refServiceRuntime()
   const service = createMarketService({
     runtime: fixture.runtime,
@@ -1307,13 +1340,37 @@ test('changes an existing market to a commit checkout', async () => {
     onSkillsChanged() {},
   })
 
-  await service.setMarketRef({ marketId: 'market', refType: 'commit', ref: 'abc1234' })
+  const ref = '1A2B3C4D5E6F7890ABCDEF1234567890ABCDEF12'
+  await service.setMarketRef({ marketId: 'market', refType: 'commit', ref })
 
-  const clone = fixture.commands.find((argv) => argv[0] === 'git' && argv[1] === 'clone')
-  const checkout = fixture.commands.find((argv) => argv[0] === 'git' && argv[3] === 'checkout')
-  assert.deepEqual(clone.slice(0, -1), ['git', 'clone', 'example/market'])
-  assert.equal(checkout[4], 'abc1234')
-  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: 'commit', ref: 'abc1234' })
+  const gitCommands = fixture.commands.filter((argv) => argv[0] === 'git')
+  const target = gitCommands[0][3]
+  assert.match(target, /^market\.next-/)
+  assert.deepEqual(gitCommands, [
+    ['git', 'init', '--quiet', target],
+    ['git', '-C', target, 'remote', 'add', 'origin', 'example/market'],
+    ['git', '-C', target, 'fetch', '--depth', '1', 'origin', ref.toLowerCase()],
+    ['git', '-C', target, 'checkout', '--quiet', 'FETCH_HEAD'],
+  ])
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'Updated Market', repo: 'example/market', refType: 'commit', ref: ref.toLowerCase() })
+})
+
+test('rejects commit refs that a depth-1 fetch cannot resolve', async () => {
+  const fixture = refServiceRuntime()
+  const service = createMarketService({
+    runtime: fixture.runtime,
+    hooks: {
+      async reconcile() {},
+      suspendMarket() {},
+      resumeMarket() {},
+    },
+    onSkillsChanged() {},
+  })
+
+  await assert.rejects(() => service.setMarketRef({ marketId: 'market', refType: 'commit', ref: 'abc1234' }), /完整的 commit SHA/)
+
+  assert.equal(fixture.commands.some((argv) => argv[0] === 'git'), false)
+  assert.deepEqual(fixture.config.markets[0], { id: 'market', name: 'market', repo: 'example/market', refType: 'tag', ref: 'old' })
 })
 
 test('resets an existing market ref to the repository default', async () => {

@@ -118,10 +118,15 @@ repository is not a standalone web application.
   updated, or removed.
 - Treat market content and hook configuration as untrusted input. Keep path
   containment checks. Bind approvals to verified hook configuration
-  fingerprints, not market pull outcomes. Market pulls suspend hook Fibers while
-  Git mutates the checkout; reconciliation remounts matching approved
+  fingerprints, not market update outcomes. Market updates suspend hook Fibers
+  while Git mutates the checkout; reconciliation remounts matching approved
   fingerprints, disposes mismatches, and clears approvals when the current hook
   configuration disappears or becomes unusable.
+- Keep market checkouts HEAD-only and shallow: clone with `--depth 1`, fetch
+  commit refs by their full SHA at depth 1, and update with a depth-1 fetch, a
+  hard reset to `FETCH_HEAD`, and cleanup of superseded objects. Never
+  reintroduce a full-history clone or a history-deepening update; large market
+  repositories must not accumulate old snapshots.
 - Use `@deepseek-ai/dsh-client-ui-primitives` before making a new UI control.
   The page uses `Button`, `Input`, `Pill`, `Menu`, `Tooltip`, and
   `DisclosureRow`. The native plugin configuration card follows the built-in
